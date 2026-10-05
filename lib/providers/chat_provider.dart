@@ -3,28 +3,40 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
+import '../models/file_diff.dart';
 import '../models/tool_call_log.dart';
-import '../services/gemini_agent_service.dart';
+import '../services/auto_debug_service.dart';
+import '../services/git_service.dart';
+import '../services/snapshot_service.dart';
 import '../services/storage_service.dart';
+import '../services/unified_agent_service.dart';
 import 'settings_provider.dart';
 import 'workspace_provider.dart';
 
 class ChatProvider extends ChangeNotifier {
   final StorageService storageService;
-  final GeminiAgentService geminiAgentService;
+  final UnifiedAgentService agentService;
+  final AutoDebugService autoDebugService;
+  final GitService gitService;
+  final SnapshotService snapshotService;
   final SettingsProvider settingsProvider;
   final WorkspaceProvider workspaceProvider;
 
   List<ChatSession> _sessions = [];
   ChatSession? _activeSession;
   bool _isAgentBusy = false;
+  bool _isAutoDebugging = false;
+  String _autoDebugStatus = '';
 
-  // Active right panel tab: 'chat', 'sessions', 'webview'
+  // Active right panel tab: 0=Editor, 1=Saved, 2=WebView, 3=RAG, 4=Diff
   int _activeRightPanelTab = 0;
 
   ChatProvider({
     required this.storageService,
-    required this.geminiAgentService,
+    required this.agentService,
+    required this.autoDebugService,
+    required this.gitService,
+    required this.snapshotService,
     required this.settingsProvider,
     required this.workspaceProvider,
   }) {
@@ -34,7 +46,10 @@ class ChatProvider extends ChangeNotifier {
   List<ChatSession> get sessions => List.unmodifiable(_sessions);
   ChatSession? get activeSession => _activeSession;
   bool get isAgentBusy => _isAgentBusy;
+  bool get isAutoDebugging => _isAutoDebugging;
+  String get autoDebugStatus => _autoDebugStatus;
   int get activeRightPanelTab => _activeRightPanelTab;
+  List<FileDiff> get recentDiffs => snapshotService.recentDiffs;
 
   void setActiveRightPanelTab(int index) {
     _activeRightPanelTab = index;
@@ -61,7 +76,6 @@ class ChatProvider extends ChangeNotifier {
     );
     _sessions.insert(0, session);
     _activeSession = session;
-    _activeRightPanelTab = 0; // switch to chat tab
     _saveState();
     notifyListeners();
     return session;
@@ -71,7 +85,6 @@ class ChatProvider extends ChangeNotifier {
     final found = _sessions.where((s) => s.id == sessionId).firstOrNull;
     if (found != null) {
       _activeSession = found;
-      _activeRightPanelTab = 0;
       storageService.setActiveSessionId(sessionId);
       notifyListeners();
     }
@@ -107,10 +120,16 @@ class ChatProvider extends ChangeNotifier {
 
     final session = _activeSession!;
 
-    // Check if user entered an 'xrun' command (e.g. 'xrun flutter pub get' or 'xrun ls -la')
+    // Check for xrun command (e.g. 'xrun flutter test' or 'xrun flutter pub get')
     if (trimmed.toLowerCase().startsWith('xrun ') || trimmed.toLowerCase().startsWith('!run ')) {
       final cmd = trimmed.substring(trimmed.indexOf(' ') + 1).trim();
       await executeXRunCommand(cmd);
+      return;
+    }
+
+    // Check for auto-debug trigger (e.g. 'autofix', 'auto-debug', 'fix tests')
+    if (trimmed.toLowerCase() == 'autofix' || trimmed.toLowerCase() == 'auto-debug') {
+      await runAutoDebug('flutter test');
       return;
     }
 
@@ -121,13 +140,11 @@ class ChatProvider extends ChangeNotifier {
     session.messages.add(userMsg);
     session.updatedAt = DateTime.now();
 
-    // Auto-name session from first user message
     if (session.messages.length == 1 || session.title == 'New Agent Chat') {
       final cleanTitle = trimmed.split('\n').first;
       session.title = cleanTitle.length > 35 ? '${cleanTitle.substring(0, 35)}...' : cleanTitle;
     }
 
-    // Create placeholder assistant message
     final assistantMsg = ChatMessage(
       role: MessageRole.assistant,
       content: '',
@@ -138,10 +155,9 @@ class ChatProvider extends ChangeNotifier {
     _isAgentBusy = true;
     notifyListeners();
 
-    bool fileSystemMutated = false;
-
     try {
-      await geminiAgentService.runAgentTurn(
+      await agentService.runAgentTurn(
+        provider: settingsProvider.activeProvider,
         apiKey: settingsProvider.apiKey,
         modelName: settingsProvider.model,
         temperature: settingsProvider.temperature,
@@ -155,9 +171,6 @@ class ChatProvider extends ChangeNotifier {
           final idx = assistantMsg.toolCalls.indexWhere((t) => t.id == toolLog.id);
           if (idx != -1) {
             assistantMsg.toolCalls[idx] = toolLog;
-          }
-          if (['write_file', 'edit_file', 'move_file', 'delete_file'].contains(toolLog.toolName)) {
-            fileSystemMutated = true;
           }
           notifyListeners();
         },
@@ -176,13 +189,8 @@ class ChatProvider extends ChangeNotifier {
     } finally {
       assistantMsg.isProcessing = false;
       _isAgentBusy = false;
+      await workspaceProvider.refreshFileTree();
       _saveState();
-
-      if (fileSystemMutated) {
-        // Refresh file tree in workspace provider
-        workspaceProvider.refreshFileTree();
-      }
-
       notifyListeners();
     }
   }
@@ -245,8 +253,120 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  // --- 🛡️ 1. SELF-HEALING AUTO-DEBUG LOOP ---
+  Future<void> runAutoDebug(String testCommand) async {
+    if (_isAgentBusy || _isAutoDebugging) return;
+    _isAutoDebugging = true;
+    _isAgentBusy = true;
+
+    if (_activeSession == null) createNewSession();
+    final session = _activeSession!;
+
+    final userMsg = ChatMessage(
+      role: MessageRole.user,
+      content: '🛡️ **Auto-Debug & Fix**: `$testCommand`',
+    );
+    session.messages.add(userMsg);
+
+    final assistantMsg = ChatMessage(
+      role: MessageRole.assistant,
+      content: '🛡️ **Starting Self-Healing Loop** for `$testCommand`...\n',
+      isProcessing: true,
+    );
+    session.messages.add(assistantMsg);
+    notifyListeners();
+
+    try {
+      final success = await autoDebugService.runSelfHealingLoop(
+        testCommand: testCommand,
+        provider: settingsProvider.activeProvider,
+        apiKey: settingsProvider.apiKey,
+        modelName: settingsProvider.model,
+        temperature: settingsProvider.temperature,
+        onStepUpdate: (step) {
+          _autoDebugStatus = '${step.stage}: ${step.details}';
+          assistantMsg.content += '\n- **[Step ${step.iteration}]** ${step.stage}: ${step.details}';
+          notifyListeners();
+        },
+        onAgentMessage: (msg) {
+          assistantMsg.content += '\n$msg';
+          notifyListeners();
+        },
+      );
+
+      if (success) {
+        assistantMsg.content += '\n\n🎉 **Self-Healing Complete!** All tests are now passing.';
+      } else {
+        assistantMsg.content += '\n\n⚠️ **Auto-Debug Stopped**: Maximum iterations reached. Review changes in Diff Viewer.';
+      }
+    } catch (e) {
+      assistantMsg.content += '\n\n❌ **Auto-Debug Error**: $e';
+    } finally {
+      assistantMsg.isProcessing = false;
+      _isAutoDebugging = false;
+      _isAgentBusy = false;
+      await workspaceProvider.refreshFileTree();
+      _saveState();
+      notifyListeners();
+    }
+  }
+
+  // --- ⏪ 2. ONE-CLICK SNAPSHOT & ROLLBACK ---
+  Future<bool> rollbackTurn(String turnId) async {
+    final count = await snapshotService.rollbackTurn(turnId);
+    if (count > 0) {
+      await workspaceProvider.refreshFileTree();
+      if (_activeSession != null) {
+        _activeSession!.messages.add(ChatMessage(
+          role: MessageRole.system,
+          content: '⏪ **Rollback Executed**: Reverted $count modified file(s) to previous state.',
+        ));
+      }
+      _saveState();
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  // --- 🔀 3. AI-POWERED GIT COMMIT & PUSH ---
+  Future<String> generateAiCommitMessage() async {
+    final workDir = workspaceProvider.rootPath;
+    if (workDir == null) return 'chore: update files';
+
+    final diff = await gitService.getFullDiff(workDir);
+    if (diff.isEmpty) return 'chore: minor updates';
+
+    final prompt = '''
+Generate a concise, professional Conventional Commit message (e.g. "feat(core): ...", "fix(agent): ...") based on this git diff:
+```
+${diff.length > 3000 ? diff.substring(0, 3000) : diff}
+```
+Respond with ONLY the commit message string, nothing else.
+''';
+
+    final buffer = StringBuffer();
+    try {
+      await agentService.runAgentTurn(
+        provider: settingsProvider.activeProvider,
+        apiKey: settingsProvider.apiKey,
+        modelName: settingsProvider.model,
+        temperature: 0.2,
+        conversationHistory: [],
+        userPrompt: prompt,
+        onToolStarted: (_) {},
+        onToolCompleted: (_) {},
+        onContentUpdated: (chunk) => buffer.write(chunk),
+        onRagSourcesFound: (_) {},
+      );
+      final msg = buffer.toString().trim().replaceAll('`', '');
+      return msg.isNotEmpty ? msg : 'feat: workspace changes';
+    } catch (_) {
+      return 'feat: autonomous agent updates';
+    }
+  }
+
   void _extractWebPreview(ChatSession session, String text) {
-    // Check if response contains HTML code block
     final htmlRegExp = RegExp(r'```(?:html|HTML)\s*([\s\S]*?)```');
     final match = htmlRegExp.firstMatch(text);
     if (match != null) {

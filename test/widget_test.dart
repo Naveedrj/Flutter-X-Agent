@@ -4,7 +4,10 @@ import 'package:agentic_app/services/storage_service.dart';
 import 'package:agentic_app/services/workspace_service.dart';
 import 'package:agentic_app/services/terminal_service.dart';
 import 'package:agentic_app/services/rag_service.dart';
-import 'package:agentic_app/services/gemini_agent_service.dart';
+import 'package:agentic_app/services/snapshot_service.dart';
+import 'package:agentic_app/services/git_service.dart';
+import 'package:agentic_app/services/unified_agent_service.dart';
+import 'package:agentic_app/services/auto_debug_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -20,12 +23,24 @@ void main() {
     final workspaceService = WorkspaceService();
     final terminalService = TerminalService();
     final ragService = RagService(workspaceService: workspaceService);
-    final agentService = GeminiAgentService(
+    final snapshotService = SnapshotService(workspaceService: workspaceService);
+    final gitService = GitService(terminalService: terminalService);
+
+    final agentService = UnifiedAgentService(
       workspaceService: workspaceService,
       terminalService: terminalService,
       ragService: ragService,
+      snapshotService: snapshotService,
+    );
+
+    final autoDebugService = AutoDebugService(
+      workspaceService: workspaceService,
+      terminalService: terminalService,
+      agentService: agentService,
     );
 
     expect(agentService, isNotNull);
+    expect(autoDebugService, isNotNull);
+    expect(gitService, isNotNull);
   });
 }

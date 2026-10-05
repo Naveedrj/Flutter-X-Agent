@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
+import '../models/llm_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/workspace_provider.dart';
 import 'app_theme.dart';
@@ -147,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 const Spacer(),
 
-                // Model Selector in Header
+                // Provider & Model Selector in Header
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   height: 28,
@@ -158,19 +159,26 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
-                      value: SettingsProvider.availableModels.contains(settings.model)
+                      value: settings.availableModels.any((m) => m.id == settings.model)
                           ? settings.model
-                          : SettingsProvider.availableModels.first,
+                          : (settings.availableModels.isNotEmpty ? settings.availableModels.first.id : null),
                       dropdownColor: AppTheme.darkSurface,
                       style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white),
-                      items: SettingsProvider.availableModels.map((m) {
+                      items: settings.availableModels.map((m) {
                         return DropdownMenuItem<String>(
-                          value: m,
-                          child: Text(m),
+                          value: m.id,
+                          child: Text(
+                            m.isFree ? '[FREE] ${m.displayName}' : m.displayName,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       }).toList(),
                       onChanged: (val) {
-                        if (val != null) settings.setModel(val);
+                        if (val != null) {
+                          final selected = settings.availableModels.firstWhere((m) => m.id == val);
+                          settings.setActiveProvider(selected.provider);
+                          settings.setModel(val);
+                        }
                       },
                     ),
                   ),
@@ -190,12 +198,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                     decoration: BoxDecoration(
-                      color: settings.hasValidApiKey
-                          ? AppTheme.success.withOpacity(0.15)
-                          : AppTheme.warning.withOpacity(0.15),
+                      color: settings.hasValidApiKey || settings.activeProvider == LlmProviderType.ollama
+                          ? AppTheme.success.withValues(alpha: 0.15)
+                          : AppTheme.warning.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: settings.hasValidApiKey ? AppTheme.success : AppTheme.warning,
+                        color: settings.hasValidApiKey || settings.activeProvider == LlmProviderType.ollama ? AppTheme.success : AppTheme.warning,
                         width: 0.8,
                       ),
                     ),
@@ -203,17 +211,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          settings.hasValidApiKey ? Icons.check_circle : Icons.warning_amber_rounded,
+                          settings.hasValidApiKey || settings.activeProvider == LlmProviderType.ollama ? Icons.check_circle : Icons.warning_amber_rounded,
                           size: 13,
-                          color: settings.hasValidApiKey ? AppTheme.success : AppTheme.warning,
+                          color: settings.hasValidApiKey || settings.activeProvider == LlmProviderType.ollama ? AppTheme.success : AppTheme.warning,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          settings.hasValidApiKey ? 'API Key Active' : 'API Key Placeholder',
+                          settings.hasValidApiKey
+                              ? 'Key Active'
+                              : settings.activeProvider == LlmProviderType.ollama
+                                  ? 'Local Ollama'
+                                  : 'Key Needed',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
-                            color: settings.hasValidApiKey ? AppTheme.success : AppTheme.warning,
+                            color: settings.hasValidApiKey || settings.activeProvider == LlmProviderType.ollama ? AppTheme.success : AppTheme.warning,
                           ),
                         ),
                       ],

@@ -3,10 +3,13 @@ import 'package:provider/provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/workspace_provider.dart';
-import 'services/gemini_agent_service.dart';
+import 'services/auto_debug_service.dart';
+import 'services/git_service.dart';
 import 'services/rag_service.dart';
+import 'services/snapshot_service.dart';
 import 'services/storage_service.dart';
 import 'services/terminal_service.dart';
+import 'services/unified_agent_service.dart';
 import 'services/workspace_service.dart';
 import 'ui/app_theme.dart';
 import 'ui/home_screen.dart';
@@ -22,17 +25,30 @@ void main() async {
   final workspaceService = WorkspaceService();
   final terminalService = TerminalService();
   final ragService = RagService(workspaceService: workspaceService);
-  final geminiAgentService = GeminiAgentService(
+  final snapshotService = SnapshotService(workspaceService: workspaceService);
+  final gitService = GitService(terminalService: terminalService);
+
+  final agentService = UnifiedAgentService(
     workspaceService: workspaceService,
     terminalService: terminalService,
     ragService: ragService,
+    snapshotService: snapshotService,
+  );
+
+  final autoDebugService = AutoDebugService(
+    workspaceService: workspaceService,
+    terminalService: terminalService,
+    agentService: agentService,
   );
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) => SettingsProvider(storageService: storageService),
+          create: (_) => SettingsProvider(
+            storageService: storageService,
+            agentService: agentService,
+          ),
         ),
         ChangeNotifierProvider(
           create: (_) => WorkspaceProvider(
@@ -45,7 +61,10 @@ void main() async {
         ChangeNotifierProxyProvider2<SettingsProvider, WorkspaceProvider, ChatProvider>(
           create: (context) => ChatProvider(
             storageService: storageService,
-            geminiAgentService: geminiAgentService,
+            agentService: agentService,
+            autoDebugService: autoDebugService,
+            gitService: gitService,
+            snapshotService: snapshotService,
             settingsProvider: context.read<SettingsProvider>(),
             workspaceProvider: context.read<WorkspaceProvider>(),
           ),
@@ -53,7 +72,10 @@ void main() async {
               previous ??
               ChatProvider(
                 storageService: storageService,
-                geminiAgentService: geminiAgentService,
+                agentService: agentService,
+                autoDebugService: autoDebugService,
+                gitService: gitService,
+                snapshotService: snapshotService,
                 settingsProvider: settings,
                 workspaceProvider: workspace,
               ),
@@ -72,7 +94,7 @@ class AgenticApp extends StatelessWidget {
     final settings = context.watch<SettingsProvider>();
 
     return MaterialApp(
-      title: 'AGENTIC • AI Workspace & Codebase Assistant',
+      title: 'Flutter-X-Agent • Autonomous AI Workspace IDE',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),

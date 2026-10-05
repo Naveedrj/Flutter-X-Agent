@@ -1,18 +1,18 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_session.dart';
+import '../models/llm_provider.dart';
 
 class StorageService {
-  static const String _keyApiKey = 'gemini_api_key';
-  static const String _keyModel = 'gemini_model';
+  static const String _keyActiveProvider = 'active_llm_provider';
+  static const String _keyModel = 'selected_llm_model';
   static const String _keyTemperature = 'gemini_temperature';
   static const String _keyLastWorkspace = 'last_workspace_path';
   static const String _keySessions = 'chat_sessions_v1';
   static const String _keyActiveSessionId = 'active_session_id';
 
-  // Default placeholder key as requested by the user
-  static const String defaultApiKeyPlaceholder = 'YOUR_GEMINI_API_KEY_HERE';
-  static const String defaultModel = 'gemini-3.8-flash';
+  static const String defaultApiKeyPlaceholder = 'YOUR_API_KEY_HERE';
+  static const String defaultModel = 'qwen-2.5-coder-32b';
 
   late SharedPreferences _prefs;
 
@@ -20,17 +20,44 @@ class StorageService {
     _prefs = await SharedPreferences.getInstance();
   }
 
-  String getApiKey() {
-    return _prefs.getString(_keyApiKey) ?? defaultApiKeyPlaceholder;
+  LlmProviderType getActiveProvider() {
+    final name = _prefs.getString(_keyActiveProvider);
+    if (name != null) {
+      return LlmProviderType.values.firstWhere(
+        (e) => e.name == name,
+        orElse: () => LlmProviderType.groq,
+      );
+    }
+    return LlmProviderType.groq;
   }
 
-  Future<void> setApiKey(String key) async {
-    await _prefs.setString(_keyApiKey, key.trim());
+  Future<void> setActiveProvider(LlmProviderType type) async {
+    await _prefs.setString(_keyActiveProvider, type.name);
+  }
+
+  String getApiKey({LlmProviderType? provider}) {
+    final p = provider ?? getActiveProvider();
+    final key = _prefs.getString('api_key_${p.name}');
+    if (key != null && key.isNotEmpty) return key;
+
+    // Fallback for legacy key
+    final legacyKey = _prefs.getString('gemini_api_key');
+    if (p == LlmProviderType.gemini && legacyKey != null) return legacyKey;
+
+    return defaultApiKeyPlaceholder;
+  }
+
+  Future<void> setApiKey(String key, {LlmProviderType? provider}) async {
+    final p = provider ?? getActiveProvider();
+    await _prefs.setString('api_key_${p.name}', key.trim());
+    if (p == LlmProviderType.gemini) {
+      await _prefs.setString('gemini_api_key', key.trim());
+    }
   }
 
   String getModel() {
     final m = _prefs.getString(_keyModel);
-    if (m == null || m == 'gemini-2.0-flash' || m == 'gemini-2.0-flash-exp' || m.isEmpty) {
+    if (m == null || m == 'gemini-2.0-flash' || m.isEmpty) {
       return defaultModel;
     }
     return m;

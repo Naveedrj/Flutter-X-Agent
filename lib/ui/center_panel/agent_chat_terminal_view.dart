@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../models/llm_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/workspace_provider.dart';
 import '../app_theme.dart';
+import '../dialogs/git_commit_dialog.dart';
 import '../dialogs/settings_dialog.dart';
 import '../right_panel/message_bubble.dart';
 import 'terminal_console_view.dart';
@@ -24,12 +26,13 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
   bool _isXRunDetected = false;
 
   final List<String> _quickActionChips = [
-    'xrun flutter pub get',
+    '🛡️ Auto-Debug & Fix Tests',
+    '🔀 AI Commit & Push',
     'xrun flutter test',
+    'xrun flutter pub get',
     'xrun git status',
     'xrun ls -la',
-    '🔍 Analyze codebase structure',
-    '🐛 Inspect files & fix issues',
+    '🔍 Analyze codebase architecture',
     '📝 Create README.md',
   ];
 
@@ -75,6 +78,35 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
     _scrollToBottom();
   }
 
+  void _triggerAutoDebug() {
+    final chatProvider = context.read<ChatProvider>();
+    final workspace = context.read<WorkspaceProvider>();
+
+    if (workspace.rootPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a workspace folder first')),
+      );
+      return;
+    }
+
+    chatProvider.runAutoDebug('flutter test');
+    _scrollToBottom();
+  }
+
+  void _openGitCommitDialog() {
+    final workspace = context.read<WorkspaceProvider>();
+    if (workspace.rootPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a workspace folder first')),
+      );
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (_) => const GitCommitDialog(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatProvider = context.watch<ChatProvider>();
@@ -84,15 +116,16 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
     final session = chatProvider.activeSession;
     final messages = session?.messages ?? [];
     final isBusy = chatProvider.isAgentBusy;
+    final isAutoDebugging = chatProvider.isAutoDebugging;
 
     return Container(
       color: AppTheme.darkBg,
       child: Column(
         children: [
-          // Middle Top Bar: Chat Title & Quick Actions
+          // Middle Top Bar: Chat Title & Superpowers Toolbar
           Container(
-            height: 38,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: const BoxDecoration(
               color: Color(0xFF131D30),
               border: Border(bottom: BorderSide(color: AppTheme.darkBorder)),
@@ -103,7 +136,7 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    session?.title ?? 'Agent & Terminal Chat',
+                    session?.title ?? 'Agent & Terminal Hub',
                     style: const TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.bold,
@@ -112,36 +145,78 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+
+                // 🛡️ Auto-Debug Action Button
+                Tooltip(
+                  message: 'Self-Healing Auto-Debug Loop (Run tests -> AI analyzes errors -> patches code)',
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isAutoDebugging ? AppTheme.warning : const Color(0xFF182A45),
+                      foregroundColor: isAutoDebugging ? Colors.black : AppTheme.accentCyan,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: const Size(0, 26),
+                      side: const BorderSide(color: AppTheme.accentCyan, width: 0.8),
+                    ),
+                    icon: isAutoDebugging
+                        ? const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.black))
+                        : const Icon(Icons.healing, size: 13),
+                    label: Text(
+                      isAutoDebugging ? 'Healing...' : 'Auto-Debug',
+                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: isBusy ? null : _triggerAutoDebug,
+                  ),
+                ),
+                const SizedBox(width: 6),
+
+                // 🔀 AI Git Commit & Push Button
+                Tooltip(
+                  message: 'Inspect Git Diff, generate AI commit message, and push to origin',
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primaryLight,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: const Size(0, 26),
+                      side: const BorderSide(color: AppTheme.primary, width: 0.8),
+                    ),
+                    icon: const Icon(Icons.commit, size: 13),
+                    label: const Text('Git Push', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
+                    onPressed: isBusy ? null : _openGitCommitDialog,
+                  ),
+                ),
+                const SizedBox(width: 6),
+
                 // Terminal Drawer Toggle
                 TextButton.icon(
                   style: TextButton.styleFrom(
                     foregroundColor: _showLiveTerminalDrawer ? AppTheme.accentCyan : Colors.white60,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                     minimumSize: const Size(0, 26),
                   ),
                   icon: Icon(
                     _showLiveTerminalDrawer ? Icons.terminal : Icons.terminal_outlined,
-                    size: 14,
+                    size: 13,
                     color: _showLiveTerminalDrawer ? AppTheme.accentCyan : Colors.white60,
                   ),
                   label: Text(
-                    _showLiveTerminalDrawer ? 'Hide Terminal' : 'Live Terminal',
-                    style: const TextStyle(fontSize: 11),
+                    _showLiveTerminalDrawer ? 'Hide Term' : 'Terminal',
+                    style: const TextStyle(fontSize: 10.5),
                   ),
                   onPressed: () => setState(() => _showLiveTerminalDrawer = !_showLiveTerminalDrawer),
                 ),
-                const SizedBox(width: 6),
-                // New Chat
+                const SizedBox(width: 4),
+
+                // New Chat Button
                 IconButton(
-                  icon: const Icon(Icons.add_comment_outlined, size: 16, color: Colors.white70),
+                  icon: const Icon(Icons.add_comment_outlined, size: 15, color: Colors.white70),
                   splashRadius: 12,
                   tooltip: 'New Chat Session',
                   onPressed: () => chatProvider.createNewSession(),
                 ),
-                // Clear Chat
+                // Clear Chat Button
                 if (messages.isNotEmpty)
                   IconButton(
-                    icon: const Icon(Icons.delete_sweep_outlined, size: 16, color: Colors.white54),
+                    icon: const Icon(Icons.delete_sweep_outlined, size: 15, color: Colors.white54),
                     splashRadius: 12,
                     tooltip: 'Clear Messages',
                     onPressed: () => chatProvider.clearActiveSessionMessages(),
@@ -150,66 +225,72 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
             ),
           ),
 
-          // Missing API Key Banner (if key not set)
-          if (!settingsProvider.hasValidApiKey)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppTheme.warning.withValues(alpha: 0.12),
-                border: const Border(bottom: BorderSide(color: AppTheme.warning, width: 1)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.key_rounded, size: 16, color: AppTheme.warning),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Gemini API key is unset (using placeholder).',
-                      style: TextStyle(fontSize: 11, color: AppTheme.warning, fontWeight: FontWeight.w500),
-                    ),
+          // Provider & Key Status Banner
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            color: const Color(0xFF0C1322),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: const Size(0, 24),
-                      foregroundColor: AppTheme.warning,
+                  child: Text(
+                    LlmProviderUtils.getProviderName(settingsProvider.activeProvider),
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primaryLight),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  settingsProvider.model,
+                  style: const TextStyle(fontSize: 10.5, fontFamily: 'monospace', color: Colors.white70),
+                ),
+                const Spacer(),
+                if (!settingsProvider.hasValidApiKey && settingsProvider.activeProvider != LlmProviderType.ollama) ...[
+                  InkWell(
+                    onTap: () => showDialog(context: context, builder: (_) => const SettingsDialog()),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, size: 12, color: AppTheme.warning),
+                        const SizedBox(width: 4),
+                        const Text('API Key Needed', style: TextStyle(fontSize: 10, color: AppTheme.warning, fontWeight: FontWeight.bold)),
+                      ],
                     ),
-                    onPressed: () {
-                      showDialog(context: context, builder: (_) => const SettingsDialog());
-                    },
-                    child: const Text('Add Key', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                   ),
                 ],
-              ),
+              ],
             ),
+          ),
 
-          // Missing Workspace Folder Warning
+          // Missing Workspace Warning
           if (workspaceProvider.rootPath == null)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               color: AppTheme.primary.withValues(alpha: 0.1),
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline, size: 14, color: AppTheme.primaryLight),
+                  const Icon(Icons.info_outline, size: 13, color: AppTheme.primaryLight),
                   const SizedBox(width: 6),
                   const Expanded(
                     child: Text(
-                      'No workspace folder selected. Terminal & agent tools need a workspace root.',
-                      style: TextStyle(fontSize: 11, color: AppTheme.primaryLight),
+                      'Select a workspace folder on the left panel to allow tool calling and terminal operations.',
+                      style: TextStyle(fontSize: 10.5, color: AppTheme.primaryLight),
                     ),
                   ),
                   InkWell(
                     onTap: () => workspaceProvider.pickWorkspaceFolder(),
                     child: const Text(
-                      'Select Folder',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white, decoration: TextDecoration.underline),
+                      'Open Folder',
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.white, decoration: TextDecoration.underline),
                     ),
                   ),
                 ],
               ),
             ),
 
-          // Messages View / Empty State
+          // Message Stream / Welcome Screen
           Expanded(
             child: messages.isEmpty
                 ? Center(
@@ -228,48 +309,71 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                           ),
                           const SizedBox(height: 14),
                           const Text(
-                            'AI Agent & Terminal Hub',
+                            'Flutter-X-Agent Hub',
                             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Ask the agent to edit/read/move files, or type "xrun <cmd>" to execute commands directly in terminal.',
+                            'Autonomous coding agent with Self-Healing Auto-Debug, Visual Diffs, Git Automation, and xrun Terminal runner.',
                             textAlign: TextAlign.center,
                             style: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.45)),
                           ),
                           const SizedBox(height: 20),
-                          // Quick prompt buttons
+                          // Quick Action Chips
                           Wrap(
                             alignment: WrapAlignment.center,
                             spacing: 8,
                             runSpacing: 8,
                             children: _quickActionChips.map((chipText) {
                               final isCmd = chipText.startsWith('xrun');
+                              final isAuto = chipText.startsWith('🛡️');
+                              final isGit = chipText.startsWith('🔀');
+
                               return ActionChip(
                                 label: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    if (isCmd) ...[
-                                      const Icon(Icons.terminal, size: 12, color: AppTheme.accentCyan),
-                                      const SizedBox(width: 4),
-                                    ],
+                                    if (isCmd) const Icon(Icons.terminal, size: 12, color: AppTheme.accentCyan),
+                                    if (isAuto) const Icon(Icons.healing, size: 12, color: AppTheme.warning),
+                                    if (isGit) const Icon(Icons.commit, size: 12, color: AppTheme.primaryLight),
+                                    if (isCmd || isAuto || isGit) const SizedBox(width: 4),
                                     Text(
                                       chipText,
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontFamily: isCmd ? 'monospace' : null,
-                                        color: isCmd ? AppTheme.accentCyan : Colors.white70,
+                                        color: isCmd
+                                            ? AppTheme.accentCyan
+                                            : isAuto
+                                                ? AppTheme.warning
+                                                : isGit
+                                                    ? AppTheme.primaryLight
+                                                    : Colors.white70,
                                       ),
                                     ),
                                   ],
                                 ),
-                                backgroundColor: isCmd ? const Color(0xFF0F2338) : const Color(0xFF1E293B),
+                                backgroundColor: isCmd
+                                    ? const Color(0xFF0F2338)
+                                    : isAuto
+                                        ? const Color(0xFF2E2012)
+                                        : const Color(0xFF1E293B),
                                 side: BorderSide(
-                                  color: isCmd ? AppTheme.accentCyan.withValues(alpha: 0.4) : AppTheme.darkBorder,
+                                  color: isCmd
+                                      ? AppTheme.accentCyan.withValues(alpha: 0.4)
+                                      : isAuto
+                                          ? AppTheme.warning.withValues(alpha: 0.4)
+                                          : AppTheme.darkBorder,
                                 ),
                                 onPressed: () {
-                                  _inputController.text = chipText;
-                                  _sendMessage();
+                                  if (isAuto) {
+                                    _triggerAutoDebug();
+                                  } else if (isGit) {
+                                    _openGitCommitDialog();
+                                  } else {
+                                    _inputController.text = chipText;
+                                    _sendMessage();
+                                  }
                                 },
                               );
                             }).toList(),
@@ -289,7 +393,7 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                   ),
           ),
 
-          // Optional Split Live Terminal Console Drawer at Bottom
+          // Optional Live Terminal Console Drawer at Bottom
           if (_showLiveTerminalDrawer)
             Container(
               height: 220,
@@ -299,7 +403,7 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
               child: const TerminalConsoleView(),
             ),
 
-          // Quick Action Shortcut Chips Strip
+          // Quick Action Shortcut Strip
           Container(
             height: 34,
             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -311,7 +415,7 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                   alignment: Alignment.center,
                   padding: const EdgeInsets.only(right: 6),
                   child: const Text(
-                    '⚡ QUICK:',
+                    '⚡ SHORTCUTS:',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white38),
                   ),
                 ),
@@ -321,18 +425,30 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(4),
                       onTap: () {
-                        _inputController.text = chip;
-                        _sendMessage();
+                        if (chip.startsWith('🛡️')) {
+                          _triggerAutoDebug();
+                        } else if (chip.startsWith('🔀')) {
+                          _openGitCommitDialog();
+                        } else {
+                          _inputController.text = chip;
+                          _sendMessage();
+                        }
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: chip.startsWith('xrun') ? const Color(0xFF14243B) : const Color(0xFF182336),
+                          color: chip.startsWith('xrun')
+                              ? const Color(0xFF14243B)
+                              : chip.startsWith('🛡️')
+                                  ? const Color(0xFF281C10)
+                                  : const Color(0xFF182336),
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
                             color: chip.startsWith('xrun')
                                 ? AppTheme.accentCyan.withValues(alpha: 0.3)
-                                : AppTheme.darkBorder,
+                                : chip.startsWith('🛡️')
+                                    ? AppTheme.warning.withValues(alpha: 0.3)
+                                    : AppTheme.darkBorder,
                           ),
                         ),
                         child: Text(
@@ -340,7 +456,11 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                           style: TextStyle(
                             fontSize: 10,
                             fontFamily: chip.startsWith('xrun') ? 'monospace' : null,
-                            color: chip.startsWith('xrun') ? AppTheme.accentCyan : Colors.white70,
+                            color: chip.startsWith('xrun')
+                                ? AppTheme.accentCyan
+                                : chip.startsWith('🛡️')
+                                    ? AppTheme.warning
+                                    : Colors.white70,
                           ),
                         ),
                       ),
@@ -379,8 +499,8 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                           ),
                           decoration: InputDecoration(
                             hintText: isBusy
-                                ? 'Agent / Terminal is working...'
-                                : 'Ask AI Agent, or type "xrun flutter pub get" to run terminal command...',
+                                ? 'Agent / Auto-Debug is working...'
+                                : 'Prompt agent, or type "xrun <cmd>" to execute in terminal...',
                             hintStyle: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.35)),
                             prefixIcon: _isXRunDetected
                                 ? Container(
@@ -422,8 +542,8 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                   children: [
                     Text(
                       _isXRunDetected
-                          ? '⚡ xrun command mode detected: Will execute directly in workspace terminal'
-                          : 'Press Enter to send (or prefix with "xrun <cmd>" for terminal)',
+                          ? '⚡ xrun terminal execution active'
+                          : 'Press Enter to send (Shift+Enter for newline)',
                       style: TextStyle(
                         fontSize: 10,
                         color: _isXRunDetected ? AppTheme.accentCyan : Colors.white.withValues(alpha: 0.3),

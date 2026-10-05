@@ -6,6 +6,7 @@ import '../app_theme.dart';
 import '../center_panel/file_editor_view.dart';
 import 'rag_inspector_view.dart';
 import 'saved_chats_list.dart';
+import 'visual_diff_view.dart';
 import 'web_preview_view.dart';
 
 class RightPanelContainer extends StatefulWidget {
@@ -21,7 +22,7 @@ class _RightPanelContainerState extends State<RightPanelContainer> with SingleTi
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this, initialIndex: 0);
+    _tabController = TabController(length: 5, vsync: this, initialIndex: 0);
   }
 
   @override
@@ -35,13 +36,13 @@ class _RightPanelContainerState extends State<RightPanelContainer> with SingleTi
     final chatProvider = context.watch<ChatProvider>();
     final workspace = context.watch<WorkspaceProvider>();
 
-    // Auto-switch to Editor tab if a file is clicked in the explorer
     if (workspace.currentOpenFilePath != null && workspace.isFileDirty && _tabController.index != 0) {
       _tabController.animateTo(0);
     }
 
     final hasWebPreview = chatProvider.activeSession?.webPreviewHtml != null;
     final hasOpenFile = workspace.currentOpenFilePath != null;
+    final diffCount = chatProvider.recentDiffs.length;
 
     return Container(
       decoration: const BoxDecoration(
@@ -63,8 +64,8 @@ class _RightPanelContainerState extends State<RightPanelContainer> with SingleTi
               indicatorWeight: 2.5,
               labelColor: Colors.white,
               unselectedLabelColor: Colors.white54,
-              labelStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
-              unselectedLabelStyle: const TextStyle(fontSize: 11.5),
+              labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              unselectedLabelStyle: const TextStyle(fontSize: 11),
               isScrollable: true,
               tabAlignment: TabAlignment.start,
               tabs: [
@@ -74,7 +75,7 @@ class _RightPanelContainerState extends State<RightPanelContainer> with SingleTi
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.code_rounded, size: 14),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 4),
                       Text(hasOpenFile ? 'Editor *' : 'Editor'),
                     ],
                   ),
@@ -84,8 +85,19 @@ class _RightPanelContainerState extends State<RightPanelContainer> with SingleTi
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      const Icon(Icons.difference_outlined, size: 14),
+                      const SizedBox(width: 4),
+                      Text('Diffs ${diffCount > 0 ? "($diffCount)" : ""}'),
+                    ],
+                  ),
+                ),
+                Tab(
+                  iconMargin: EdgeInsets.zero,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                       const Icon(Icons.history_rounded, size: 14),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 4),
                       Text('Saved (${chatProvider.sessions.length})'),
                     ],
                   ),
@@ -96,7 +108,7 @@ class _RightPanelContainerState extends State<RightPanelContainer> with SingleTi
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.language_rounded, size: 14),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 4),
                       const Text('Web View'),
                       if (hasWebPreview) ...[
                         const SizedBox(width: 4),
@@ -118,7 +130,7 @@ class _RightPanelContainerState extends State<RightPanelContainer> with SingleTi
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.hub_outlined, size: 14),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 4),
                       Text('RAG (${workspace.ragStats.totalChunks})'),
                     ],
                   ),
@@ -133,6 +145,7 @@ class _RightPanelContainerState extends State<RightPanelContainer> with SingleTi
               controller: _tabController,
               children: const [
                 FileEditorView(),
+                VisualDiffView(),
                 SavedChatsList(),
                 WebPreviewView(),
                 RagInspectorView(),
