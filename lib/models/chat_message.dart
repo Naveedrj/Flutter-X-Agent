@@ -15,6 +15,7 @@ class ChatMessage {
   final List<String> ragSources;
   final DateTime timestamp;
   bool isProcessing;
+  String? statusStep; // e.g. "🔍 Reading lib/main.dart...", "✍️ Writing lib/screens/login.dart (+42 lines)"
 
   // Adversarial Debate Metadata
   String? speakerTag; // 'blue', 'red', 'consensus'
@@ -32,6 +33,7 @@ class ChatMessage {
     List<String>? ragSources,
     DateTime? timestamp,
     this.isProcessing = false,
+    this.statusStep,
     this.speakerTag,
     this.modelName,
     this.roundNumber,
@@ -56,6 +58,7 @@ class ChatMessage {
         'toolCalls': toolCalls.map((t) => t.toJson()).toList(),
         'ragSources': ragSources,
         'timestamp': timestamp.toIso8601String(),
+        'statusStep': statusStep,
         'speakerTag': speakerTag,
         'modelName': modelName,
         'roundNumber': roundNumber,
@@ -83,6 +86,7 @@ class ChatMessage {
             ? DateTime.tryParse(json['timestamp'] as String) ?? DateTime.now()
             : DateTime.now(),
         isProcessing: false,
+        statusStep: json['statusStep'] as String?,
         speakerTag: json['speakerTag'] as String?,
         modelName: json['modelName'] as String?,
         roundNumber: json['roundNumber'] as int?,

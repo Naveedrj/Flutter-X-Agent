@@ -13,6 +13,8 @@ class ToolCallLog {
   String? output;
   ToolStatus status;
   final DateTime timestamp;
+  String? diffStats; // e.g. "-2, +40" or "+85"
+  String? stepDescription; // e.g. "Editing lib/main.dart (-2, +40)"
 
   ToolCallLog({
     required this.id,
@@ -21,6 +23,8 @@ class ToolCallLog {
     this.output,
     this.status = ToolStatus.running,
     DateTime? timestamp,
+    this.diffStats,
+    this.stepDescription,
   }) : timestamp = timestamp ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
@@ -30,6 +34,8 @@ class ToolCallLog {
         'output': output,
         'status': status.name,
         'timestamp': timestamp.toIso8601String(),
+        'diffStats': diffStats,
+        'stepDescription': stepDescription,
       };
 
   factory ToolCallLog.fromJson(Map<String, dynamic> json) => ToolCallLog(
@@ -46,6 +52,8 @@ class ToolCallLog {
         timestamp: json['timestamp'] != null
             ? DateTime.tryParse(json['timestamp'] as String) ?? DateTime.now()
             : DateTime.now(),
+        diffStats: json['diffStats'] as String?,
+        stepDescription: json['stepDescription'] as String?,
       );
 
   String get argumentsFormatted {

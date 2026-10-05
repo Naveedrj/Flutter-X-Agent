@@ -129,6 +129,28 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void stopAgentTask() {
+    if (!_isAgentBusy) return;
+    agentService.cancelActiveTurn();
+    _isAgentBusy = false;
+    _isAutoDebugging = false;
+
+    if (_activeSession != null && _activeSession!.messages.isNotEmpty) {
+      final lastMsg = _activeSession!.messages.last;
+      if (lastMsg.isProcessing) {
+        lastMsg.isProcessing = false;
+        lastMsg.statusStep = null;
+        if (lastMsg.content.isEmpty) {
+          lastMsg.content = '🛑 **Task stopped by user.**';
+        } else if (!lastMsg.content.contains('Task stopped by user')) {
+          lastMsg.content += '\n\n🛑 *Task stopped by user.*';
+        }
+      }
+    }
+    _saveState();
+    notifyListeners();
+  }
+
   Future<void> sendMessage(String userText) async {
     final trimmed = userText.trim();
     if (trimmed.isEmpty || _isAgentBusy) return;
@@ -171,10 +193,13 @@ class ChatProvider extends ChangeNotifier {
       session.title = cleanTitle.length > 35 ? '${cleanTitle.substring(0, 35)}...' : cleanTitle;
     }
 
+    final activeModelDisplay = '${settingsProvider.activeProvider.displayName} (${settingsProvider.model})';
     final assistantMsg = ChatMessage(
       role: MessageRole.assistant,
       content: '',
       isProcessing: true,
+      modelName: activeModelDisplay,
+      statusStep: '🔍 Inspecting workspace & context...',
     );
     session.messages.add(assistantMsg);
 
@@ -189,14 +214,22 @@ class ChatProvider extends ChangeNotifier {
         temperature: settingsProvider.temperature,
         conversationHistory: session.messages.sublist(0, session.messages.length - 1),
         userPrompt: trimmed,
+        onStatusStepUpdated: (step) {
+          assistantMsg.statusStep = step;
+          notifyListeners();
+        },
         onToolStarted: (toolLog) {
           assistantMsg.toolCalls.add(toolLog);
+          assistantMsg.statusStep = toolLog.stepDescription ?? 'Executing ${toolLog.toolName}...';
           notifyListeners();
         },
         onToolCompleted: (toolLog) {
           final idx = assistantMsg.toolCalls.indexWhere((t) => t.id == toolLog.id);
           if (idx != -1) {
             assistantMsg.toolCalls[idx] = toolLog;
+          }
+          if (toolLog.diffStats != null) {
+            assistantMsg.statusStep = '✅ Applied ${toolLog.toolName} (${toolLog.diffStats})';
           }
           notifyListeners();
         },
@@ -214,6 +247,7 @@ class ChatProvider extends ChangeNotifier {
       assistantMsg.content = '❌ **Error running Agent**: $e';
     } finally {
       assistantMsg.isProcessing = false;
+      assistantMsg.statusStep = null;
       _isAgentBusy = false;
       await workspaceProvider.refreshFileTree();
       _saveState();

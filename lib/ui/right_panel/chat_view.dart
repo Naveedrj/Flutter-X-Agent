@@ -206,43 +206,59 @@ class _ChatViewState extends State<ChatView> {
             child: Column(
               children: [
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
-                      child: CallbackShortcuts(
-                        bindings: {
-                          const SingleActivator(LogicalKeyboardKey.enter, control: false, meta: false, shift: false): _sendMessage,
-                        },
-                        child: TextField(
-                          controller: _inputController,
-                          focusNode: _focusNode,
-                          maxLines: 4,
-                          minLines: 1,
-                          style: const TextStyle(fontSize: 13, color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: isBusy ? 'Agent is working...' : 'Ask agent to inspect, edit, build, or run...',
-                            hintStyle: TextStyle(fontSize: 12.5, color: Colors.white.withOpacity(0.35)),
-                            prefixIcon: const Icon(Icons.auto_awesome, size: 18, color: AppTheme.primaryLight),
+                      child: Container(
+                        height: 48,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.darkBorder),
+                        ),
+                        child: CallbackShortcuts(
+                          bindings: {
+                            const SingleActivator(LogicalKeyboardKey.enter, control: false, meta: false, shift: false): _sendMessage,
+                          },
+                          child: TextField(
+                            controller: _inputController,
+                            focusNode: _focusNode,
+                            maxLines: 1,
+                            style: const TextStyle(fontSize: 13, color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: isBusy ? 'Agent is working...' : 'Ask agent to inspect, edit, build, or run...',
+                              hintStyle: TextStyle(fontSize: 12.5, color: Colors.white.withOpacity(0.35)),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              prefixIcon: const Icon(Icons.auto_awesome, size: 18, color: AppTheme.primaryLight),
+                            ),
                           ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isBusy ? const Color(0xFF334155) : AppTheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    SizedBox(
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isBusy ? const Color(0xFFDC2626) : AppTheme.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          elevation: 0,
+                        ),
+                        icon: Icon(isBusy ? Icons.stop_rounded : Icons.send_rounded, size: 16),
+                        label: Text(
+                          isBusy ? 'Stop' : 'Send',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: isBusy
+                            ? () {
+                                chatProvider.stopAgentTask();
+                              }
+                            : _sendMessage,
                       ),
-                      onPressed: isBusy ? null : _sendMessage,
-                      child: isBusy
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.send_rounded, size: 18),
                     ),
                   ],
                 ),

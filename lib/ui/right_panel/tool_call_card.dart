@@ -88,16 +88,40 @@ class _ToolCallCardState extends State<ToolCallCard> {
                 children: [
                   Icon(_getToolIcon(t.toolName), size: 16, color: isTerminal ? AppTheme.accentCyan : color),
                   const SizedBox(width: 8),
-                  Text(
-                    isTerminal ? '\$ $commandText' : t.toolName,
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      color: isTerminal ? AppTheme.accentCyan : Colors.white,
+                  Flexible(
+                    child: Text(
+                      isTerminal
+                          ? '\$ $commandText'
+                          : (t.stepDescription ?? t.toolName),
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: isTerminal ? AppTheme.accentCyan : Colors.white,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
+                  if (t.diffStats != null && t.diffStats!.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF064E3B),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: const Color(0xFF10B981)),
+                      ),
+                      child: Text(
+                        t.diffStats!,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF34D399),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 8),
                   if (t.status == ToolStatus.running)
                     const SizedBox(
@@ -109,22 +133,6 @@ class _ToolCallCardState extends State<ToolCallCard> {
                     const Icon(Icons.check_circle, size: 14, color: AppTheme.success)
                   else
                     const Icon(Icons.error_outline, size: 14, color: AppTheme.danger),
-                  const Spacer(),
-                  // Brief argument preview for non-terminal
-                  if (!isTerminal && commandText.isNotEmpty)
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        commandText,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                          color: Colors.white.withValues(alpha: 0.5),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.end,
-                      ),
-                    ),
                   const SizedBox(width: 6),
                   Icon(
                     _isExpanded ? Icons.expand_less : Icons.expand_more,

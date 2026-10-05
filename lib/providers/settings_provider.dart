@@ -14,7 +14,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _isDarkMode = true;
   bool _isFetchingModels = false;
 
-  List<LlmModelInfo> _availableModels = List.from(LlmProviderUtils.defaultModels);
+  final List<LlmModelInfo> _availableModels = List.from(LlmProviderUtils.defaultModels);
 
   SettingsProvider({
     required this.storageService,

@@ -38,15 +38,38 @@ class MessageBubble extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (!isUser) ...[
-                const CircleAvatar(
-                  radius: 10,
-                  backgroundColor: AppTheme.primary,
-                  child: Icon(Icons.smart_toy_outlined, size: 12, color: Colors.white),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  message.modelName ?? 'AI Agent',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primaryLight),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.smart_toy_outlined, size: 13, color: AppTheme.primaryLight),
+                      const SizedBox(width: 5),
+                      const Text(
+                        'Flutter-X-Agent',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                      if (message.modelName != null && message.modelName!.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(width: 1, height: 10, color: Colors.white24),
+                        const SizedBox(width: 6),
+                        Text(
+                          message.modelName!,
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.accentCyan,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ] else ...[
                 const Text(
@@ -184,27 +207,33 @@ class MessageBubble extends StatelessWidget {
               ),
             ),
 
-          // Running / Thinking Indicator
-          if (message.isProcessing && message.content.isEmpty && message.toolCalls.isEmpty)
+          // Running / Live Execution Step Indicator
+          if (message.isProcessing)
             Container(
+              margin: const EdgeInsets.only(top: 8),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
+                color: const Color(0xFF131D30),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.darkBorder),
+                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     width: 14,
                     height: 14,
                     child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryLight),
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Text(
-                    'Agent is thinking & querying codebase...',
-                    style: TextStyle(fontSize: 12, color: Colors.white70, fontStyle: FontStyle.italic),
+                    message.statusStep ?? 'Agent is analyzing & implementing...',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontFamily: 'monospace',
+                      color: AppTheme.primaryLight,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),

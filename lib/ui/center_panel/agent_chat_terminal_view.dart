@@ -510,82 +510,6 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
               child: const TerminalConsoleView(),
             ),
 
-          // Quick Action Shortcut Strip
-          Container(
-            height: 34,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            color: const Color(0xFF0F1726),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                Container(
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.only(right: 6),
-                  child: const Text(
-                    '⚡ SHORTCUTS:',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white38),
-                  ),
-                ),
-                for (final chip in _quickActionChips)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(4),
-                      onTap: () {
-                        if (chip.startsWith('⚔️')) {
-                          chatProvider.toggleAdversarialMode();
-                          _focusNode.requestFocus();
-                        } else if (chip.startsWith('🛡️')) {
-                          _triggerAutoDebug();
-                        } else if (chip.startsWith('🔀')) {
-                          _openGitCommitDialog();
-                        } else {
-                          _inputController.text = chip;
-                          _sendMessage();
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: chip.startsWith('xrun')
-                              ? const Color(0xFF14243B)
-                              : chip.startsWith('🛡️')
-                                  ? const Color(0xFF281C10)
-                                  : chip.startsWith('⚔️')
-                                      ? const Color(0xFF1E1B4B)
-                                      : const Color(0xFF182336),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: chip.startsWith('xrun')
-                                ? AppTheme.accentCyan.withValues(alpha: 0.3)
-                                : chip.startsWith('🛡️')
-                                    ? AppTheme.warning.withValues(alpha: 0.3)
-                                    : chip.startsWith('⚔️')
-                                        ? const Color(0xFF6366F1)
-                                        : AppTheme.darkBorder,
-                          ),
-                        ),
-                        child: Text(
-                          chip,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontFamily: chip.startsWith('xrun') ? 'monospace' : null,
-                            color: chip.startsWith('xrun')
-                                ? AppTheme.accentCyan
-                                : chip.startsWith('🛡️')
-                                    ? AppTheme.warning
-                                    : chip.startsWith('⚔️')
-                                        ? AppTheme.accentCyan
-                                        : Colors.white70,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
           // Input & In-chat Terminal Bar
           Container(
             padding: const EdgeInsets.all(12),
@@ -624,9 +548,12 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                   ),
 
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
                       child: Container(
+                        height: 48,
+                        alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: _isXRunDetected
                               ? const Color(0xFF0D1C2E)
@@ -646,8 +573,7 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                         child: TextField(
                           controller: _inputController,
                           focusNode: _focusNode,
-                          maxLines: 4,
-                          minLines: 1,
+                          maxLines: 1,
                           style: TextStyle(
                             fontSize: 13,
                             fontFamily: _isXRunDetected ? 'monospace' : null,
@@ -655,9 +581,9 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                           ),
                           decoration: InputDecoration(
                             hintText: isAdvMode
-                                ? '⚔️ Adversarial Duel: Enter feature to build & stress-test (Blue Builder vs Red Hacker)...'
+                                ? '⚔️ Duel: Enter feature to build & stress-test (Blue vs Red)...'
                                 : 'Ask Agent (e.g. create a counter widget) or type "xrun flutter test"...',
-                            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.35)),
+                            hintStyle: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.35)),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             prefixIcon: Icon(
@@ -676,32 +602,43 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                     ),
                     const SizedBox(width: 8),
 
-                    // Send Button
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isXRunDetected
-                            ? AppTheme.accentCyan
-                            : isAdvMode
-                                ? const Color(0xFF4F46E5)
-                                : AppTheme.primary,
-                        foregroundColor: _isXRunDetected ? Colors.black : Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    // Send or Stop Button (48px Height)
+                    SizedBox(
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isBusy
+                              ? const Color(0xFFDC2626)
+                              : (_isXRunDetected
+                                  ? AppTheme.accentCyan
+                                  : isAdvMode
+                                      ? const Color(0xFF4F46E5)
+                                      : AppTheme.primary),
+                          foregroundColor: isBusy
+                              ? Colors.white
+                              : (_isXRunDetected ? Colors.black : Colors.white),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          elevation: 0,
+                        ),
+                        icon: Icon(
+                          isBusy
+                              ? Icons.stop_rounded
+                              : (_isXRunDetected ? Icons.play_arrow : (isAdvMode ? Icons.flash_on : Icons.send_rounded)),
+                          size: 16,
+                        ),
+                        label: Text(
+                          isBusy
+                              ? 'Stop'
+                              : (isAdvMode ? 'Duel ⚔️' : (_isXRunDetected ? 'Run' : 'Send')),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: isBusy
+                            ? () {
+                                chatProvider.stopAgentTask();
+                              }
+                            : _sendMessage,
                       ),
-                      icon: isBusy
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : Icon(_isXRunDetected ? Icons.play_arrow : (isAdvMode ? Icons.flash_on : Icons.send), size: 16),
-                      label: Text(
-                        isBusy
-                            ? 'Processing...'
-                            : (isAdvMode ? 'Duel ⚔️' : (_isXRunDetected ? 'Run' : 'Send')),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: isBusy ? null : _sendMessage,
                     ),
                   ],
                 ),
