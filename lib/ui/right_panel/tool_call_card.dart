@@ -104,22 +104,31 @@ class _ToolCallCardState extends State<ToolCallCard> {
                   ),
                   if (t.diffStats != null && t.diffStats!.isNotEmpty) ...[
                     const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF064E3B),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: const Color(0xFF10B981)),
-                      ),
-                      child: Text(
-                        t.diffStats!,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF34D399),
-                        ),
-                      ),
+                    Builder(
+                      builder: (context) {
+                        final isDelete = t.diffStats!.contains('delete') || t.diffStats!.startsWith('-all');
+                        final bgColor = isDelete ? const Color(0xFF451A1A) : const Color(0xFF064E3B);
+                        final borderColor = isDelete ? const Color(0xFFEF4444) : const Color(0xFF10B981);
+                        final textColor = isDelete ? const Color(0xFFFCA5A5) : const Color(0xFF34D399);
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: bgColor,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: borderColor),
+                          ),
+                          child: Text(
+                            t.diffStats!,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.bold,
+                              color: textColor,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ],
                   const SizedBox(width: 8),

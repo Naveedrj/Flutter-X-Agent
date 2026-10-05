@@ -58,6 +58,25 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
     super.dispose();
   }
 
+  int _lastMessageCount = 0;
+  String? _lastSessionId;
+
+  void _checkAutoScroll(String? sessionId, int currentCount, bool isBusy) {
+    if (sessionId != _lastSessionId || currentCount != _lastMessageCount || isBusy) {
+      _lastSessionId = sessionId;
+      _lastMessageCount = currentCount;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -121,6 +140,8 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
     final isBusy = chatProvider.isAgentBusy;
     final isAutoDebugging = chatProvider.isAutoDebugging;
     final isAdvMode = chatProvider.isAdversarialMode;
+
+    _checkAutoScroll(session?.id, messages.length, isBusy || isAutoDebugging);
 
     return Container(
       color: AppTheme.darkBg,

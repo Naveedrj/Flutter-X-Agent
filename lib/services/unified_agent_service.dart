@@ -191,10 +191,10 @@ class UnifiedAgentService {
 You are Flutter-X-Agent, an elite autonomous AI Software Engineer with direct programmatic access to this workspace.
 Workspace Directory: $root
 
-CRITICAL DIRECTIVES — ALWAYS IMPLEMENT DIRECTLY:
-1. NEVER output passive tutorials, theoretical instructions, or tell the user to manually copy/paste code or run commands.
-2. YOU MUST ALWAYS IMPLEMENT DIRECTLY.
-   - When writing new files or rewriting existing ones, call `write_file` or clearly format file blocks as:
+CRITICAL SAFETY & EXECUTION DIRECTIVES:
+1. NEVER output passive tutorials, theoretical text, or tell the user to manually copy/paste code or run commands.
+2. YOU MUST ALWAYS IMPLEMENT DIRECTLY:
+   - When writing new files or rewriting existing ones, call `write_file` or format file blocks as:
      ### File: path/to/file.dart
      ```dart
      // complete code here
@@ -202,8 +202,9 @@ CRITICAL DIRECTIVES — ALWAYS IMPLEMENT DIRECTLY:
    - When editing existing code, call `edit_file` with exact target_content and replacement_content.
    - When terminal commands are required (e.g. `flutter pub get`, `flutter test`), call `execute_terminal_command`.
    - When inspecting the codebase, call `search_codebase`, `read_file`, or `list_directory`.
-3. Provide complete, compile-clean code with all imports.
-4. Execute tools immediately without waiting for confirmation.
+3. NEVER delete whole project folders or essential directories (like `lib`, `android`, `ios`, `test`) unless explicitly commanded to wipe/reset the project.
+4. NEVER output raw JSON tool-call syntax in your visible chat response text.
+5. Provide complete, compile-clean code with all imports and explain your work cleanly.
 ''';
   }
 
@@ -832,7 +833,7 @@ CRITICAL DIRECTIVES — ALWAYS IMPLEMENT DIRECTLY:
       case 'read_file':
         return '🔍 Reading ${args['path'] ?? 'file'}';
       case 'write_file':
-        return '📄 Writing ${args['path'] ?? 'file'}';
+        return '✍️ Writing ${args['path'] ?? 'file'}';
       case 'edit_file':
         return '📝 Editing ${args['path'] ?? 'file'}';
       case 'execute_terminal_command':
@@ -862,10 +863,11 @@ CRITICAL DIRECTIVES — ALWAYS IMPLEMENT DIRECTLY:
 
     final createdFiles = <String, String>{};
     final executedCommands = <String>[];
+    int toolsRun = 0;
 
-    // 1. Check for explicit JSON tool calls in text
+    // 1. Check for explicit JSON tool calls in text (e.g. emitted by Ollama / Qwen / OpenRouter)
     final jsonToolRegex = RegExp(
-      r'\{\s*"name"\s*:\s*"(write_file|edit_file|execute_terminal_command)"\s*,\s*"(?:parameters|arguments)"\s*:\s*(\{[\s\S]*?\})\s*\}',
+      r'\{\s*"name"\s*:\s*"(write_file|edit_file|delete_file|move_file|read_file|execute_terminal_command|search_codebase|list_directory)"\s*,\s*"(?:parameters|arguments)"\s*:\s*(\{[\s\S]*?\})\s*\}',
       caseSensitive: false,
     );
     for (final match in jsonToolRegex.allMatches(responseText)) {
@@ -883,6 +885,7 @@ CRITICAL DIRECTIVES — ALWAYS IMPLEMENT DIRECTLY:
           stepDescription: stepDesc,
         );
         onToolStarted(toolLog);
+        toolsRun++;
         try {
           final res = await _executeTool(toolName, args, turnId);
           toolLog.diffStats = res['diffStats'] as String?;
@@ -910,7 +913,7 @@ CRITICAL DIRECTIVES — ALWAYS IMPLEMENT DIRECTLY:
 
       if (createdFiles.containsKey(path)) continue;
 
-      final stepDesc = '📄 Creating / updating $path';
+      final stepDesc = '✍️ Writing $path';
       final toolLog = ToolCallLog(
         id: const Uuid().v4(),
         toolName: 'write_file',
@@ -919,6 +922,7 @@ CRITICAL DIRECTIVES — ALWAYS IMPLEMENT DIRECTLY:
         stepDescription: stepDesc,
       );
       onToolStarted(toolLog);
+      toolsRun++;
 
       try {
         final res = await _executeTool('write_file', {'path': path, 'content': content}, turnId);
@@ -947,6 +951,7 @@ CRITICAL DIRECTIVES — ALWAYS IMPLEMENT DIRECTLY:
         stepDescription: stepDesc,
       );
       onToolStarted(toolLog);
+      toolsRun++;
 
       try {
         final res = await _executeTool('execute_terminal_command', {'command': cmd}, turnId);
@@ -960,17 +965,24 @@ CRITICAL DIRECTIVES — ALWAYS IMPLEMENT DIRECTLY:
       onToolCompleted(toolLog);
     }
 
-    if (createdFiles.isNotEmpty || executedCommands.isNotEmpty) {
-      final summaryBuffer = StringBuffer(responseText);
-      summaryBuffer.writeln('\n\n---');
-      summaryBuffer.writeln('⚡ **Autonomous Implementation Applied:**');
-      for (final entry in createdFiles.entries) {
-        summaryBuffer.writeln('• 📄 Updated `${entry.key}` `(${entry.value})`');
+    // Clean up response text to remove raw JSON code blocks and unfenced JSON tool objects
+    var cleanText = responseText;
+    cleanText = cleanText.replaceAll(
+      RegExp(r'```(?:json)?\s*\{\s*"name"\s*:\s*"[a-zA-Z0-9_]+"\s*,\s*"(?:parameters|arguments)"\s*:\s*\{[\s\S]*?\}\s*\}\s*```', caseSensitive: false),
+      '',
+    );
+    cleanText = cleanText.replaceAll(
+      RegExp(r'\{\s*"name"\s*:\s*"(?:write_file|edit_file|delete_file|move_file|read_file|execute_terminal_command|search_codebase|list_directory)"\s*,\s*"(?:parameters|arguments)"\s*:\s*\{[\s\S]*?\}\s*\}', caseSensitive: false),
+      '',
+    );
+
+    cleanText = cleanText.trim();
+
+    if (toolsRun > 0) {
+      if (cleanText.isEmpty) {
+        cleanText = 'I have completed the requested workspace operations.';
       }
-      for (final c in executedCommands) {
-        summaryBuffer.writeln('• 💻 Executed terminal command: `$c`');
-      }
-      onContentUpdated(summaryBuffer.toString());
+      onContentUpdated(cleanText);
     }
   }
 

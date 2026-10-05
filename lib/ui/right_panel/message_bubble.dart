@@ -18,6 +18,7 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUser = message.role == MessageRole.user;
     final timeStr = DateFormat('h:mm a').format(message.timestamp);
+    final cleanContent = _cleanVisibleContent(message.content);
 
     // Adversarial styling branches
     if (message.isBlueTeam) {
@@ -133,7 +134,7 @@ class MessageBubble extends StatelessWidget {
             ),
 
           // Message Content Body
-          if (message.content.isNotEmpty)
+          if (cleanContent.isNotEmpty)
             Container(
               constraints: const BoxConstraints(maxWidth: 720),
               padding: const EdgeInsets.all(12),
@@ -153,7 +154,7 @@ class MessageBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   MarkdownBody(
-                    data: message.content,
+                    data: cleanContent,
                     selectable: true,
                     styleSheet: MarkdownStyleSheet(
                       p: const TextStyle(fontSize: 13, height: 1.45, color: Color(0xFFF1F5F9)),
@@ -179,7 +180,7 @@ class MessageBubble extends StatelessWidget {
                     alignment: Alignment.bottomRight,
                     child: InkWell(
                       onTap: () {
-                        Clipboard.setData(ClipboardData(text: message.content));
+                        Clipboard.setData(ClipboardData(text: cleanContent));
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Copied message to clipboard'),
@@ -521,5 +522,20 @@ class MessageBubble extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static String _cleanVisibleContent(String text) {
+    var clean = text;
+    // Remove JSON code blocks
+    clean = clean.replaceAll(
+      RegExp(r'```(?:json)?\s*\{\s*"name"\s*:\s*"[a-zA-Z0-9_]+"\s*,\s*"(?:parameters|arguments)"\s*:\s*\{[\s\S]*?\}\s*\}\s*```', caseSensitive: false),
+      '',
+    );
+    // Remove unfenced raw JSON tool calls
+    clean = clean.replaceAll(
+      RegExp(r'\{\s*"name"\s*:\s*"(?:write_file|edit_file|delete_file|move_file|read_file|execute_terminal_command|search_codebase|list_directory)"\s*,\s*"(?:parameters|arguments)"\s*:\s*\{[\s\S]*?\}\s*\}', caseSensitive: false),
+      '',
+    );
+    return clean.trim();
   }
 }

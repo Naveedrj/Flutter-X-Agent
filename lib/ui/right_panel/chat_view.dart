@@ -36,6 +36,25 @@ class _ChatViewState extends State<ChatView> {
     super.dispose();
   }
 
+  int _lastMessageCount = 0;
+  String? _lastSessionId;
+
+  void _checkAutoScroll(String? sessionId, int currentCount, bool isBusy) {
+    if (sessionId != _lastSessionId || currentCount != _lastMessageCount || isBusy) {
+      _lastSessionId = sessionId;
+      _lastMessageCount = currentCount;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -67,6 +86,8 @@ class _ChatViewState extends State<ChatView> {
     final session = chatProvider.activeSession;
     final messages = session?.messages ?? [];
     final isBusy = chatProvider.isAgentBusy;
+
+    _checkAutoScroll(session?.id, messages.length, isBusy);
 
     return Container(
       color: AppTheme.darkBg,

@@ -250,6 +250,16 @@ class ChatProvider extends ChangeNotifier {
       assistantMsg.statusStep = null;
       _isAgentBusy = false;
       await workspaceProvider.refreshFileTree();
+
+      // Auto-reindex RAG knowledge in background if files were created, edited, moved, or deleted
+      if (assistantMsg.toolCalls.any((t) =>
+          t.toolName == 'write_file' ||
+          t.toolName == 'edit_file' ||
+          t.toolName == 'delete_file' ||
+          t.toolName == 'move_file')) {
+        unawaited(agentService.ragService.indexWorkspace(geminiApiKey: settingsProvider.apiKey));
+      }
+
       _saveState();
       notifyListeners();
     }
