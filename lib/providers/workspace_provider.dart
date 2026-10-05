@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import '../models/file_item.dart';
-import '../models/rag_chunk.dart';
 import '../services/rag_service.dart';
 import '../services/storage_service.dart';
 import '../services/terminal_service.dart';

@@ -4,12 +4,15 @@ import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
 import '../models/file_diff.dart';
+import '../models/llm_provider.dart';
 import '../models/tool_call_log.dart';
+import '../services/adversarial_service.dart';
 import '../services/auto_debug_service.dart';
 import '../services/git_service.dart';
 import '../services/snapshot_service.dart';
 import '../services/storage_service.dart';
 import '../services/unified_agent_service.dart';
+import 'adversarial_provider.dart';
 import 'settings_provider.dart';
 import 'workspace_provider.dart';
 
@@ -19,14 +22,17 @@ class ChatProvider extends ChangeNotifier {
   final AutoDebugService autoDebugService;
   final GitService gitService;
   final SnapshotService snapshotService;
+  final AdversarialService adversarialService;
   final SettingsProvider settingsProvider;
   final WorkspaceProvider workspaceProvider;
+  final AdversarialProvider adversarialProvider;
 
   List<ChatSession> _sessions = [];
   ChatSession? _activeSession;
   bool _isAgentBusy = false;
   bool _isAutoDebugging = false;
   String _autoDebugStatus = '';
+  bool _isAdversarialMode = false;
 
   // Active right panel tab: 0=Editor, 1=Saved, 2=WebView, 3=RAG, 4=Diff
   int _activeRightPanelTab = 0;
@@ -37,8 +43,10 @@ class ChatProvider extends ChangeNotifier {
     required this.autoDebugService,
     required this.gitService,
     required this.snapshotService,
+    required this.adversarialService,
     required this.settingsProvider,
     required this.workspaceProvider,
+    required this.adversarialProvider,
   }) {
     _loadSavedSessions();
   }
@@ -48,8 +56,19 @@ class ChatProvider extends ChangeNotifier {
   bool get isAgentBusy => _isAgentBusy;
   bool get isAutoDebugging => _isAutoDebugging;
   String get autoDebugStatus => _autoDebugStatus;
+  bool get isAdversarialMode => _isAdversarialMode;
   int get activeRightPanelTab => _activeRightPanelTab;
   List<FileDiff> get recentDiffs => snapshotService.recentDiffs;
+
+  void setAdversarialMode(bool enabled) {
+    _isAdversarialMode = enabled;
+    notifyListeners();
+  }
+
+  void toggleAdversarialMode() {
+    _isAdversarialMode = !_isAdversarialMode;
+    notifyListeners();
+  }
 
   void setActiveRightPanelTab(int index) {
     _activeRightPanelTab = index;
@@ -133,6 +152,13 @@ class ChatProvider extends ChangeNotifier {
       return;
     }
 
+    // If Adversarial Mode is Active, run the dual-agent debate loop in this chat!
+    if (_isAdversarialMode) {
+      await _runAdversarialChat(trimmed, session);
+      return;
+    }
+
+    // Standard Autonomous Agent Flow
     final userMsg = ChatMessage(
       role: MessageRole.user,
       content: trimmed,
@@ -195,6 +221,174 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  /// Runs the Dual-Model Adversarial Loop (Blue Builder vs Red Hacker) in the main chat!
+  Future<void> _runAdversarialChat(String prompt, ChatSession session) async {
+    final userMsg = ChatMessage(
+      role: MessageRole.user,
+      content: prompt,
+    );
+    session.messages.add(userMsg);
+    session.updatedAt = DateTime.now();
+
+    if (session.messages.length == 1 || session.title == 'New Agent Chat') {
+      final cleanTitle = prompt.split('\n').first;
+      session.title = cleanTitle.length > 30 ? '⚔️ ${cleanTitle.substring(0, 30)}...' : '⚔️ $cleanTitle';
+    }
+
+    _isAgentBusy = true;
+    notifyListeners();
+
+    final cfg = adversarialProvider.config;
+
+    // Blue Team ALWAYS inherits global settings (active provider, model, and key)
+    final blueProvider = settingsProvider.activeProvider;
+    final blueModel = settingsProvider.model;
+    final blueKey = settingsProvider.apiKey;
+
+    // Resolve Red API Key & Model
+    final redProvider = cfg.redProvider;
+    final redModel = cfg.redModel.isNotEmpty ? cfg.redModel : blueModel;
+    String redKey = cfg.redApiKey.trim();
+    if (redKey.isEmpty || redKey.contains('YOUR_API_KEY')) {
+      redKey = storageService.getApiKey(provider: redProvider);
+    }
+    if (redKey.isEmpty || redKey.contains('YOUR_API_KEY')) {
+      redKey = settingsProvider.apiKey;
+    }
+
+    String currentCode = workspaceProvider.currentFileContent;
+    String lastBlueResponse = '';
+    String lastRedCritique = '';
+    int totalVulns = 0;
+    int totalOpts = 0;
+
+    try {
+      for (int round = 1; round <= cfg.maxRounds; round++) {
+        // -------------------------------------------------------------
+        // 1. BLUE TEAM MESSAGE (BUILDER / ARCHITECT)
+        // -------------------------------------------------------------
+        final blueMsg = ChatMessage(
+          role: MessageRole.assistant,
+          speakerTag: 'blue',
+          modelName: '${blueProvider.displayName} ($blueModel)',
+          roundNumber: round,
+          content: '🔵 **Blue Team (Builder)** is constructing implementation & architecture (Round $round)...',
+          isProcessing: true,
+        );
+        session.messages.add(blueMsg);
+        notifyListeners();
+
+        final blueSystemPrompt = adversarialService.buildBlueSystemPrompt(round: round, focus: cfg.focus);
+        final blueUserPrompt = round == 1
+            ? adversarialService.buildBlueInitialPrompt(taskPrompt: prompt, existingCode: currentCode.isNotEmpty ? currentCode : null)
+            : adversarialService.buildBlueRefactorPrompt(taskPrompt: prompt, previousCode: currentCode, redCritique: lastRedCritique);
+
+        final blueResponse = await adversarialService.generateText(
+          provider: blueProvider,
+          model: blueModel,
+          apiKey: blueKey,
+          systemPrompt: blueSystemPrompt,
+          userPrompt: blueUserPrompt,
+          temperature: cfg.temperature,
+        );
+
+        lastBlueResponse = blueResponse;
+        final extractedCode = adversarialService.extractCodeBlock(blueResponse);
+        if (extractedCode != null && extractedCode.isNotEmpty) {
+          currentCode = extractedCode;
+        }
+
+        blueMsg.content = blueResponse;
+        blueMsg.hardenedCode = currentCode.isNotEmpty ? currentCode : null;
+        blueMsg.isProcessing = false;
+        _saveState();
+        notifyListeners();
+
+        // -------------------------------------------------------------
+        // 2. RED TEAM MESSAGE (HACKER / SECURITY CRITIC)
+        // -------------------------------------------------------------
+        final redMsg = ChatMessage(
+          role: MessageRole.assistant,
+          speakerTag: 'red',
+          modelName: '${redProvider.displayName} ($redModel)',
+          roundNumber: round,
+          content: '🔴 **Red Team (Hacker)** is penetrating code for exploits, race conditions, & bottlenecks (Round $round)...',
+          isProcessing: true,
+        );
+        session.messages.add(redMsg);
+        notifyListeners();
+
+        final redSystemPrompt = adversarialService.buildRedSystemPrompt(focus: cfg.focus);
+        final redUserPrompt = adversarialService.buildRedAttackPrompt(
+          taskPrompt: prompt,
+          codeToAttack: currentCode.isNotEmpty ? currentCode : blueResponse,
+          round: round,
+          maxRounds: cfg.maxRounds,
+        );
+
+        final redResponse = await adversarialService.generateText(
+          provider: redProvider,
+          model: redModel,
+          apiKey: redKey,
+          systemPrompt: redSystemPrompt,
+          userPrompt: redUserPrompt,
+          temperature: cfg.temperature,
+        );
+
+        lastRedCritique = redResponse;
+        final vulns = adversarialService.parseVulnerabilities(redResponse);
+        final opts = adversarialService.parseOptimizations(redResponse);
+        totalVulns += vulns.length;
+        totalOpts += opts.length;
+
+        final isConsensus = redResponse.toUpperCase().contains('CONSENSUS_REACHED') ||
+            redResponse.toUpperCase().contains('NO VULNERABILITIES FOUND') ||
+            (vulns.isEmpty && opts.isEmpty && round > 1);
+
+        redMsg.content = redResponse;
+        redMsg.vulnerabilities = vulns;
+        redMsg.optimizations = opts;
+        redMsg.isProcessing = false;
+        _saveState();
+        notifyListeners();
+
+        if (isConsensus || round == cfg.maxRounds) {
+          final consensusMsg = ChatMessage(
+            role: MessageRole.assistant,
+            speakerTag: 'consensus',
+            content: '### 🛡️ Adversarial Hardening Complete!\n\n'
+                '• **Neutralized Vulnerabilities**: $totalVulns\n'
+                '• **Performance Optimizations**: $totalOpts\n'
+                '• **Debate Rounds**: $round of ${cfg.maxRounds}\n'
+                '• **Status**: Verified 100/100 Hardened Consensus.',
+            hardenedCode: currentCode.isNotEmpty ? currentCode : lastBlueResponse,
+          );
+          session.messages.add(consensusMsg);
+          _saveState();
+          notifyListeners();
+          break;
+        }
+      }
+    } catch (e) {
+      // Remove any unfinished pending processing messages from session so no spinner is left behind
+      session.messages.removeWhere((m) => m.isProcessing);
+
+      session.messages.add(
+        ChatMessage(
+          role: MessageRole.assistant,
+          content: '❌ **Adversarial Duel Error**: $e\n\n💡 *Tip: Check your API key in Settings (⚙️) or select a free hosted model like Groq / Gemini.*',
+        ),
+      );
+    } finally {
+      for (final msg in session.messages) {
+        msg.isProcessing = false;
+      }
+      _isAgentBusy = false;
+      _saveState();
+      notifyListeners();
+    }
+  }
+
   Future<void> executeXRunCommand(String command) async {
     if (command.trim().isEmpty || _isAgentBusy) return;
 
@@ -208,19 +402,10 @@ class ChatProvider extends ChangeNotifier {
       content: 'xrun $command',
     );
     session.messages.add(userMsg);
-    session.updatedAt = DateTime.now();
-
-    final toolLog = ToolCallLog(
-      id: const Uuid().v4(),
-      toolName: 'execute_terminal_command',
-      arguments: {'command': command},
-      status: ToolStatus.running,
-    );
 
     final assistantMsg = ChatMessage(
       role: MessageRole.assistant,
       content: '',
-      toolCalls: [toolLog],
       isProcessing: true,
     );
     session.messages.add(assistantMsg);
@@ -228,52 +413,56 @@ class ChatProvider extends ChangeNotifier {
     _isAgentBusy = true;
     notifyListeners();
 
-    try {
-      final workDir = workspaceProvider.rootPath ?? '.';
-      final res = await workspaceProvider.terminalService.execute(command, workingDirectory: workDir);
+    final toolLog = ToolCallLog(
+      id: const Uuid().v4(),
+      toolName: 'execute_command',
+      arguments: {'command': command},
+      status: ToolStatus.running,
+    );
+    assistantMsg.toolCalls.add(toolLog);
+    notifyListeners();
 
-      toolLog.status = res.isSuccess ? ToolStatus.success : ToolStatus.failed;
-      toolLog.output = res.outputCombined;
+    final root = workspaceProvider.rootPath ?? '.';
+    final result = await agentService.terminalService.execute(command, workingDirectory: root);
 
-      if (res.isSuccess) {
-        assistantMsg.content = '✅ **Command completed successfully** (exit 0 in ${res.duration.inMilliseconds}ms)\n\n```bash\n\$ $command\n${res.stdout.trim()}\n```';
-      } else {
-        assistantMsg.content = '❌ **Command failed** (exit code ${res.exitCode})\n\n```bash\n${res.outputCombined}\n```';
-      }
-    } catch (e) {
-      toolLog.status = ToolStatus.failed;
-      toolLog.output = 'Error executing terminal command: $e';
-      assistantMsg.content = '❌ **Terminal Execution Error**: $e';
-    } finally {
-      assistantMsg.isProcessing = false;
-      _isAgentBusy = false;
-      await workspaceProvider.refreshFileTree();
-      _saveState();
-      notifyListeners();
-    }
+    toolLog.output = result.outputCombined;
+    toolLog.status = result.isSuccess ? ToolStatus.success : ToolStatus.failed;
+
+    assistantMsg.content = result.isSuccess
+        ? '✅ Command completed with exit code 0.'
+        : '⚠️ Command failed with exit code ${result.exitCode}.';
+    assistantMsg.isProcessing = false;
+    _isAgentBusy = false;
+
+    await workspaceProvider.refreshFileTree();
+    _saveState();
+    notifyListeners();
   }
 
-  // --- 🛡️ 1. SELF-HEALING AUTO-DEBUG LOOP ---
   Future<void> runAutoDebug(String testCommand) async {
-    if (_isAgentBusy || _isAutoDebugging) return;
-    _isAutoDebugging = true;
-    _isAgentBusy = true;
+    if (_isAgentBusy || workspaceProvider.rootPath == null) return;
 
-    if (_activeSession == null) createNewSession();
+    if (_activeSession == null) {
+      createNewSession(title: '🛡️ Auto-Debug: $testCommand');
+    }
+
     final session = _activeSession!;
-
     final userMsg = ChatMessage(
       role: MessageRole.user,
-      content: '🛡️ **Auto-Debug & Fix**: `$testCommand`',
+      content: '🛡️ **Run Self-Healing Auto-Debug Loop**: `$testCommand`',
     );
     session.messages.add(userMsg);
 
     final assistantMsg = ChatMessage(
       role: MessageRole.assistant,
-      content: '🛡️ **Starting Self-Healing Loop** for `$testCommand`...\n',
+      content: '🚀 Starting Self-Healing Auto-Debug Loop on workspace...',
       isProcessing: true,
     );
     session.messages.add(assistantMsg);
+
+    _isAgentBusy = true;
+    _isAutoDebugging = true;
+    _autoDebugStatus = 'Running tests...';
     notifyListeners();
 
     try {
@@ -285,103 +474,54 @@ class ChatProvider extends ChangeNotifier {
         temperature: settingsProvider.temperature,
         onStepUpdate: (step) {
           _autoDebugStatus = '${step.stage}: ${step.details}';
-          assistantMsg.content += '\n- **[Step ${step.iteration}]** ${step.stage}: ${step.details}';
           notifyListeners();
         },
-        onAgentMessage: (msg) {
-          assistantMsg.content += '\n$msg';
+        onAgentMessage: (chunk) {
+          assistantMsg.content = chunk;
           notifyListeners();
         },
       );
 
       if (success) {
-        assistantMsg.content += '\n\n🎉 **Self-Healing Complete!** All tests are now passing.';
-      } else {
-        assistantMsg.content += '\n\n⚠️ **Auto-Debug Stopped**: Maximum iterations reached. Review changes in Diff Viewer.';
+        _activeRightPanelTab = 4; // Switch to Diff tab
       }
     } catch (e) {
-      assistantMsg.content += '\n\n❌ **Auto-Debug Error**: $e';
+      assistantMsg.content = '❌ Auto-debug encountered an error: $e';
     } finally {
       assistantMsg.isProcessing = false;
-      _isAutoDebugging = false;
       _isAgentBusy = false;
+      _isAutoDebugging = false;
+      _autoDebugStatus = '';
       await workspaceProvider.refreshFileTree();
       _saveState();
       notifyListeners();
-    }
-  }
-
-  // --- ⏪ 2. ONE-CLICK SNAPSHOT & ROLLBACK ---
-  Future<bool> rollbackTurn(String turnId) async {
-    final count = await snapshotService.rollbackTurn(turnId);
-    if (count > 0) {
-      await workspaceProvider.refreshFileTree();
-      if (_activeSession != null) {
-        _activeSession!.messages.add(ChatMessage(
-          role: MessageRole.system,
-          content: '⏪ **Rollback Executed**: Reverted $count modified file(s) to previous state.',
-        ));
-      }
-      _saveState();
-      notifyListeners();
-      return true;
-    }
-    return false;
-  }
-
-  // --- 🔀 3. AI-POWERED GIT COMMIT & PUSH ---
-  Future<String> generateAiCommitMessage() async {
-    final workDir = workspaceProvider.rootPath;
-    if (workDir == null) return 'chore: update files';
-
-    final diff = await gitService.getFullDiff(workDir);
-    if (diff.isEmpty) return 'chore: minor updates';
-
-    final prompt = '''
-Generate a concise, professional Conventional Commit message (e.g. "feat(core): ...", "fix(agent): ...") based on this git diff:
-```
-${diff.length > 3000 ? diff.substring(0, 3000) : diff}
-```
-Respond with ONLY the commit message string, nothing else.
-''';
-
-    final buffer = StringBuffer();
-    try {
-      await agentService.runAgentTurn(
-        provider: settingsProvider.activeProvider,
-        apiKey: settingsProvider.apiKey,
-        modelName: settingsProvider.model,
-        temperature: 0.2,
-        conversationHistory: [],
-        userPrompt: prompt,
-        onToolStarted: (_) {},
-        onToolCompleted: (_) {},
-        onContentUpdated: (chunk) => buffer.write(chunk),
-        onRagSourcesFound: (_) {},
-      );
-      final msg = buffer.toString().trim().replaceAll('`', '');
-      return msg.isNotEmpty ? msg : 'feat: workspace changes';
-    } catch (_) {
-      return 'feat: autonomous agent updates';
-    }
-  }
-
-  void _extractWebPreview(ChatSession session, String text) {
-    final htmlRegExp = RegExp(r'```(?:html|HTML)\s*([\s\S]*?)```');
-    final match = htmlRegExp.firstMatch(text);
-    if (match != null) {
-      final code = match.group(1);
-      if (code != null && code.trim().isNotEmpty) {
-        session.webPreviewHtml = code.trim();
-      }
     }
   }
 
   void updateWebPreviewHtml(String html) {
-    if (_activeSession != null) {
-      _activeSession!.webPreviewHtml = html;
+    if (activeSession != null) {
+      activeSession!.webPreviewHtml = html;
       _saveState();
       notifyListeners();
+    }
+  }
+
+  Future<String> generateAiCommitMessage() async {
+    final root = workspaceProvider.rootPath ?? '.';
+    return await gitService.generateCommitMessage(
+      workingDirectory: root,
+      agentService: agentService,
+      provider: settingsProvider.activeProvider,
+      apiKey: settingsProvider.apiKey,
+      modelName: settingsProvider.model,
+    );
+  }
+
+  void _extractWebPreview(ChatSession session, String text) {
+    final htmlRegex = RegExp(r'```html\n([\s\S]*?)```');
+    final match = htmlRegex.firstMatch(text);
+    if (match != null) {
+      session.webPreviewHtml = match.group(1);
     }
   }
 

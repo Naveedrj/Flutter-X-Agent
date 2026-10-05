@@ -6,6 +6,10 @@ enum LlmProviderType {
   ollama,
 }
 
+extension LlmProviderTypeExtension on LlmProviderType {
+  String get displayName => LlmProviderUtils.getProviderName(this);
+}
+
 class LlmModelInfo {
   final String id;
   final String displayName;
@@ -51,32 +55,32 @@ class LlmProviderUtils {
 
     // Google Gemini Models
     LlmModelInfo(
-      id: 'gemini-2.5-flash',
-      displayName: 'Gemini 2.5 Flash',
+      id: 'gemini-3.8-flash',
+      displayName: 'Gemini 3.8 Flash (Google)',
       provider: LlmProviderType.gemini,
       isFree: true,
-      description: 'Latest high-speed multimodal reasoning model',
+      description: 'Latest flagship fast multimodal model',
+    ),
+    LlmModelInfo(
+      id: 'gemini-2.0-flash',
+      displayName: 'Gemini 2.0 Flash (Google)',
+      provider: LlmProviderType.gemini,
+      isFree: true,
+      description: 'Next-gen high-speed multimodal reasoning model',
     ),
     LlmModelInfo(
       id: 'gemini-1.5-flash',
-      displayName: 'Gemini 1.5 Flash',
+      displayName: 'Gemini 1.5 Flash (Google)',
       provider: LlmProviderType.gemini,
       isFree: true,
-      description: 'Fast, lightweight Gemini model with free tier',
+      description: 'Fast, lightweight multimodal model with free tier',
     ),
     LlmModelInfo(
       id: 'gemini-1.5-pro',
-      displayName: 'Gemini 1.5 Pro',
+      displayName: 'Gemini 1.5 Pro (Google)',
       provider: LlmProviderType.gemini,
       isFree: false,
       description: 'Deep multi-file reasoning with 2M context window',
-    ),
-    LlmModelInfo(
-      id: 'gemini-3.8-flash',
-      displayName: 'Gemini 3.8 Flash',
-      provider: LlmProviderType.gemini,
-      isFree: true,
-      description: 'Gemini 3.x series model',
     ),
 
     // Anthropic Claude Models

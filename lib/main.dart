@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'providers/adversarial_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/workspace_provider.dart';
+import 'services/adversarial_service.dart';
 import 'services/auto_debug_service.dart';
 import 'services/git_service.dart';
 import 'services/rag_service.dart';
@@ -41,9 +43,20 @@ void main() async {
     agentService: agentService,
   );
 
+  final adversarialService = AdversarialService(
+    workspaceService: workspaceService,
+    snapshotService: snapshotService,
+  );
+
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(
+          create: (_) => AdversarialProvider(
+            adversarialService: adversarialService,
+            storageService: storageService,
+          ),
+        ),
         ChangeNotifierProvider(
           create: (_) => SettingsProvider(
             storageService: storageService,
@@ -58,17 +71,19 @@ void main() async {
             storageService: storageService,
           ),
         ),
-        ChangeNotifierProxyProvider2<SettingsProvider, WorkspaceProvider, ChatProvider>(
+        ChangeNotifierProxyProvider3<SettingsProvider, WorkspaceProvider, AdversarialProvider, ChatProvider>(
           create: (context) => ChatProvider(
             storageService: storageService,
             agentService: agentService,
             autoDebugService: autoDebugService,
             gitService: gitService,
             snapshotService: snapshotService,
+            adversarialService: adversarialService,
             settingsProvider: context.read<SettingsProvider>(),
             workspaceProvider: context.read<WorkspaceProvider>(),
+            adversarialProvider: context.read<AdversarialProvider>(),
           ),
-          update: (context, settings, workspace, previous) =>
+          update: (context, settings, workspace, adversarial, previous) =>
               previous ??
               ChatProvider(
                 storageService: storageService,
@@ -76,8 +91,10 @@ void main() async {
                 autoDebugService: autoDebugService,
                 gitService: gitService,
                 snapshotService: snapshotService,
+                adversarialService: adversarialService,
                 settingsProvider: settings,
                 workspaceProvider: workspace,
+                adversarialProvider: adversarial,
               ),
         ),
       ],

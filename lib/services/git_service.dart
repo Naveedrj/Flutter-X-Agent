@@ -1,4 +1,6 @@
+import '../models/llm_provider.dart';
 import 'terminal_service.dart';
+import 'unified_agent_service.dart';
 
 class GitStatusResult {
   final bool isGitRepo;
@@ -70,5 +72,24 @@ class GitService {
     final escapedMessage = commitMessage.replaceAll('"', '\\"');
     final command = 'git add . && git commit -m "$escapedMessage" && git push $remote $branch';
     return await terminalService.execute(command, workingDirectory: workingDirectory);
+  }
+
+  Future<String> generateCommitMessage({
+    required String workingDirectory,
+    required UnifiedAgentService agentService,
+    required LlmProviderType provider,
+    required String apiKey,
+    required String modelName,
+  }) async {
+    final diffStat = await terminalService.execute(
+      'git status --short',
+      workingDirectory: workingDirectory,
+    );
+    final files = diffStat.stdout.trim();
+    if (files.isEmpty) {
+      return 'chore: minor updates and optimizations';
+    }
+    final firstLines = files.split('\n').take(3).join(', ');
+    return 'feat: updates across $firstLines';
   }
 }

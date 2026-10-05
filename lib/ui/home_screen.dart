@@ -279,7 +279,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 // 1. Left Panel (Workspace Explorer)
                 if (_isLeftPanelVisible)
                   const SizedBox(
-                    width: 260,
+                    width: 235,
                     child: WorkspaceExplorer(),
                   ),
 
@@ -288,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 // 2. Center Panel (Agent Chat & Mixed Terminal Hub with xrun)
                 const Expanded(
-                  flex: 5,
+                  flex: 7,
                   child: AgentChatTerminalView(),
                 ),
 
@@ -298,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 // 3. Right Panel (Code Editor, Saved Chats, Web View, RAG Knowledge)
                 if (_isRightPanelVisible)
                   const Expanded(
-                    flex: 4,
+                    flex: 3,
                     child: RightPanelContainer(),
                   ),
               ],

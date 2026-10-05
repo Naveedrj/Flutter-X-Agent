@@ -16,6 +16,14 @@ class ChatMessage {
   final DateTime timestamp;
   bool isProcessing;
 
+  // Adversarial Debate Metadata
+  String? speakerTag; // 'blue', 'red', 'consensus'
+  String? modelName;
+  int? roundNumber;
+  List<String> vulnerabilities;
+  List<String> optimizations;
+  String? hardenedCode;
+
   ChatMessage({
     String? id,
     required this.role,
@@ -24,10 +32,22 @@ class ChatMessage {
     List<String>? ragSources,
     DateTime? timestamp,
     this.isProcessing = false,
+    this.speakerTag,
+    this.modelName,
+    this.roundNumber,
+    List<String>? vulnerabilities,
+    List<String>? optimizations,
+    this.hardenedCode,
   })  : id = id ?? const Uuid().v4(),
         toolCalls = toolCalls ?? [],
         ragSources = ragSources ?? [],
+        vulnerabilities = vulnerabilities ?? [],
+        optimizations = optimizations ?? [],
         timestamp = timestamp ?? DateTime.now();
+
+  bool get isBlueTeam => speakerTag == 'blue';
+  bool get isRedTeam => speakerTag == 'red';
+  bool get isConsensus => speakerTag == 'consensus';
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -36,6 +56,12 @@ class ChatMessage {
         'toolCalls': toolCalls.map((t) => t.toJson()).toList(),
         'ragSources': ragSources,
         'timestamp': timestamp.toIso8601String(),
+        'speakerTag': speakerTag,
+        'modelName': modelName,
+        'roundNumber': roundNumber,
+        'vulnerabilities': vulnerabilities,
+        'optimizations': optimizations,
+        'hardenedCode': hardenedCode,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -57,5 +83,11 @@ class ChatMessage {
             ? DateTime.tryParse(json['timestamp'] as String) ?? DateTime.now()
             : DateTime.now(),
         isProcessing: false,
+        speakerTag: json['speakerTag'] as String?,
+        modelName: json['modelName'] as String?,
+        roundNumber: json['roundNumber'] as int?,
+        vulnerabilities: (json['vulnerabilities'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+        optimizations: (json['optimizations'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+        hardenedCode: json['hardenedCode'] as String?,
       );
 }

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../models/llm_provider.dart';
+import '../../providers/adversarial_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/workspace_provider.dart';
 import '../app_theme.dart';
+import '../dialogs/adversarial_config_dialog.dart';
 import '../dialogs/git_commit_dialog.dart';
 import '../dialogs/settings_dialog.dart';
 import '../right_panel/message_bubble.dart';
@@ -26,6 +27,7 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
   bool _isXRunDetected = false;
 
   final List<String> _quickActionChips = [
+    '⚔️ Adversarial Duel (Blue vs Red)',
     '🛡️ Auto-Debug & Fix Tests',
     '🔀 AI Commit & Push',
     'xrun flutter test',
@@ -112,150 +114,242 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
     final chatProvider = context.watch<ChatProvider>();
     final settingsProvider = context.watch<SettingsProvider>();
     final workspaceProvider = context.watch<WorkspaceProvider>();
+    final advProvider = context.watch<AdversarialProvider>();
 
     final session = chatProvider.activeSession;
     final messages = session?.messages ?? [];
     final isBusy = chatProvider.isAgentBusy;
     final isAutoDebugging = chatProvider.isAutoDebugging;
+    final isAdvMode = chatProvider.isAdversarialMode;
 
     return Container(
       color: AppTheme.darkBg,
       child: Column(
         children: [
-          // Middle Top Bar: Chat Title & Superpowers Toolbar
+          // Middle Top Bar: Single Chat Header & Superpower Toggles
           Container(
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: const BoxDecoration(
               color: Color(0xFF131D30),
               border: Border(bottom: BorderSide(color: AppTheme.darkBorder)),
             ),
-            child: Row(
-              children: [
-                const Icon(Icons.smart_toy_outlined, size: 16, color: AppTheme.primaryLight),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    session?.title ?? 'Agent & Terminal Hub',
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  const Icon(Icons.smart_toy_outlined, size: 16, color: AppTheme.primaryLight),
+                  const SizedBox(width: 8),
+                  Text(
+                    session?.title ?? 'Agent Chat & Terminal Hub',
                     style: const TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
 
-                // 🛡️ Auto-Debug Action Button
-                Tooltip(
-                  message: 'Self-Healing Auto-Debug Loop (Run tests -> AI analyzes errors -> patches code)',
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isAutoDebugging ? AppTheme.warning : const Color(0xFF182A45),
-                      foregroundColor: isAutoDebugging ? Colors.black : AppTheme.accentCyan,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: const Size(0, 26),
-                      side: const BorderSide(color: AppTheme.accentCyan, width: 0.8),
+                  const SizedBox(width: 14),
+
+                  // ⚔️ ADVERSARIAL MODE SWITCH PILL
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isAdvMode ? const Color(0xFF1E1B4B) : const Color(0xFF0C1322),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: isAdvMode ? const Color(0xFF6366F1) : AppTheme.darkBorder,
+                        width: isAdvMode ? 1.2 : 0.8,
+                      ),
                     ),
-                    icon: isAutoDebugging
-                        ? const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.black))
-                        : const Icon(Icons.healing, size: 13),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          onTap: () => chatProvider.toggleAdversarialMode(),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.shield,
+                                  size: 13,
+                                  color: isAdvMode ? AppTheme.accentCyan : Colors.white38,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Adversarial Mode',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: isAdvMode ? FontWeight.bold : FontWeight.normal,
+                                    color: isAdvMode ? Colors.white : Colors.white60,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Transform.scale(
+                                  scale: 0.65,
+                                  child: Switch(
+                                    value: isAdvMode,
+                                    activeColor: AppTheme.accentCyan,
+                                    activeTrackColor: const Color(0xFF4338CA),
+                                    onChanged: (val) => chatProvider.setAdversarialMode(val),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (isAdvMode) ...[
+                          Container(width: 1, height: 16, color: const Color(0xFF4338CA)),
+                          IconButton(
+                            icon: const Icon(Icons.tune, size: 13, color: AppTheme.accentCyan),
+                            tooltip: 'Configure Duel Models (Blue Builder vs Red Hacker)',
+                            splashRadius: 12,
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            constraints: const BoxConstraints(),
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (_) => const AdversarialConfigDialog(),
+                              );
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  // 🛡️ Auto-Debug Action Button
+                  Tooltip(
+                    message: 'Self-Healing Auto-Debug Loop (Run tests -> AI analyzes errors -> patches code)',
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isAutoDebugging ? AppTheme.warning : const Color(0xFF182A45),
+                        foregroundColor: isAutoDebugging ? Colors.black : AppTheme.accentCyan,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        minimumSize: const Size(0, 26),
+                        side: const BorderSide(color: AppTheme.accentCyan, width: 0.8),
+                      ),
+                      icon: isAutoDebugging
+                          ? const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.black))
+                          : const Icon(Icons.healing, size: 13),
+                      label: Text(
+                        isAutoDebugging ? 'Healing...' : 'Auto-Debug',
+                        style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: isBusy ? null : _triggerAutoDebug,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+
+                  // 🔀 AI Git Commit & Push Button
+                  Tooltip(
+                    message: 'Inspect Git Diff, generate AI commit message, and push to origin',
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primaryLight,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        minimumSize: const Size(0, 26),
+                        side: const BorderSide(color: AppTheme.primary, width: 0.8),
+                      ),
+                      icon: const Icon(Icons.commit, size: 13),
+                      label: const Text('Git Push', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
+                      onPressed: isBusy ? null : _openGitCommitDialog,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+
+                  // Terminal Drawer Toggle
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: _showLiveTerminalDrawer ? AppTheme.accentCyan : Colors.white60,
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      minimumSize: const Size(0, 26),
+                    ),
+                    icon: Icon(
+                      _showLiveTerminalDrawer ? Icons.terminal : Icons.terminal_outlined,
+                      size: 13,
+                      color: _showLiveTerminalDrawer ? AppTheme.accentCyan : Colors.white60,
+                    ),
                     label: Text(
-                      isAutoDebugging ? 'Healing...' : 'Auto-Debug',
-                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold),
+                      _showLiveTerminalDrawer ? 'Hide Term' : 'Terminal',
+                      style: const TextStyle(fontSize: 10.5),
                     ),
-                    onPressed: isBusy ? null : _triggerAutoDebug,
+                    onPressed: () => setState(() => _showLiveTerminalDrawer = !_showLiveTerminalDrawer),
                   ),
-                ),
-                const SizedBox(width: 6),
+                  const SizedBox(width: 4),
 
-                // 🔀 AI Git Commit & Push Button
-                Tooltip(
-                  message: 'Inspect Git Diff, generate AI commit message, and push to origin',
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primaryLight,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: const Size(0, 26),
-                      side: const BorderSide(color: AppTheme.primary, width: 0.8),
-                    ),
-                    icon: const Icon(Icons.commit, size: 13),
-                    label: const Text('Git Push', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
-                    onPressed: isBusy ? null : _openGitCommitDialog,
-                  ),
-                ),
-                const SizedBox(width: 6),
-
-                // Terminal Drawer Toggle
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    foregroundColor: _showLiveTerminalDrawer ? AppTheme.accentCyan : Colors.white60,
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    minimumSize: const Size(0, 26),
-                  ),
-                  icon: Icon(
-                    _showLiveTerminalDrawer ? Icons.terminal : Icons.terminal_outlined,
-                    size: 13,
-                    color: _showLiveTerminalDrawer ? AppTheme.accentCyan : Colors.white60,
-                  ),
-                  label: Text(
-                    _showLiveTerminalDrawer ? 'Hide Term' : 'Terminal',
-                    style: const TextStyle(fontSize: 10.5),
-                  ),
-                  onPressed: () => setState(() => _showLiveTerminalDrawer = !_showLiveTerminalDrawer),
-                ),
-                const SizedBox(width: 4),
-
-                // New Chat Button
-                IconButton(
-                  icon: const Icon(Icons.add_comment_outlined, size: 15, color: Colors.white70),
-                  splashRadius: 12,
-                  tooltip: 'New Chat Session',
-                  onPressed: () => chatProvider.createNewSession(),
-                ),
-                // Clear Chat Button
-                if (messages.isNotEmpty)
+                  // New Chat Button
                   IconButton(
-                    icon: const Icon(Icons.delete_sweep_outlined, size: 15, color: Colors.white54),
+                    icon: const Icon(Icons.add_comment_outlined, size: 15, color: Colors.white70),
                     splashRadius: 12,
-                    tooltip: 'Clear Messages',
-                    onPressed: () => chatProvider.clearActiveSessionMessages(),
+                    tooltip: 'New Chat Session',
+                    onPressed: () => chatProvider.createNewSession(),
                   ),
-              ],
+                  // Clear Chat Button
+                  if (messages.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.delete_sweep_outlined, size: 15, color: Colors.white54),
+                      splashRadius: 12,
+                      tooltip: 'Clear Messages',
+                      onPressed: () => chatProvider.clearActiveSessionMessages(),
+                    ),
+                ],
+              ),
             ),
           ),
 
           // Provider & Key Status Banner
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             color: const Color(0xFF0C1322),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(4),
+                if (isAdvMode) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E1B4B),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFF6366F1)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.flash_on, size: 11, color: AppTheme.accentCyan),
+                        const SizedBox(width: 4),
+                        Text(
+                          'DUEL ACTIVE: Blue (${advProvider.config.blueModel}) ⚔️ Red (${advProvider.config.redModel})',
+                          style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppTheme.accentCyan, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Text(
-                    LlmProviderUtils.getProviderName(settingsProvider.activeProvider),
-                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primaryLight),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${settingsProvider.activeProvider.displayName} • ${settingsProvider.model}',
+                      style: const TextStyle(fontSize: 10.5, fontFamily: 'monospace', color: AppTheme.primaryLight, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  settingsProvider.model,
-                  style: const TextStyle(fontSize: 10.5, fontFamily: 'monospace', color: Colors.white70),
-                ),
+                ],
                 const Spacer(),
                 if (!settingsProvider.hasValidApiKey && settingsProvider.activeProvider != LlmProviderType.ollama) ...[
                   InkWell(
                     onTap: () => showDialog(context: context, builder: (_) => const SettingsDialog()),
-                    child: Row(
+                    child: const Row(
                       children: [
-                        const Icon(Icons.warning_amber_rounded, size: 12, color: AppTheme.warning),
-                        const SizedBox(width: 4),
-                        const Text('API Key Needed', style: TextStyle(fontSize: 10, color: AppTheme.warning, fontWeight: FontWeight.bold)),
+                        Icon(Icons.warning_amber_rounded, size: 12, color: AppTheme.warning),
+                        SizedBox(width: 4),
+                        Text('API Key Needed', style: TextStyle(fontSize: 10, color: AppTheme.warning, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -290,7 +384,7 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
               ),
             ),
 
-          // Message Stream / Welcome Screen
+          // Unified Chat Message Stream / Welcome Screen
           Expanded(
             child: messages.isEmpty
                 ? Center(
@@ -302,19 +396,21 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: AppTheme.primary.withValues(alpha: 0.15),
+                              color: isAdvMode ? const Color(0xFF312E81) : AppTheme.primary.withValues(alpha: 0.15),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.bolt, size: 40, color: AppTheme.primaryLight),
+                            child: Icon(isAdvMode ? Icons.shield : Icons.bolt, size: 40, color: AppTheme.primaryLight),
                           ),
                           const SizedBox(height: 14),
-                          const Text(
-                            'Flutter-X-Agent Hub',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                          Text(
+                            isAdvMode ? '⚔️ Adversarial Mode Ready' : 'Flutter-X-Agent Hub',
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Autonomous coding agent with Self-Healing Auto-Debug, Visual Diffs, Git Automation, and xrun Terminal runner.',
+                            isAdvMode
+                                ? 'Blue Team (${advProvider.config.blueModel}) and Red Team (${advProvider.config.redModel}) will duel in this chat to build, attack, and harden code.'
+                                : 'Autonomous coding agent with Adversarial Duel Mode, Self-Healing Auto-Debug, Visual Diffs, and xrun Terminal runner.',
                             textAlign: TextAlign.center,
                             style: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.45)),
                           ),
@@ -328,6 +424,7 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                               final isCmd = chipText.startsWith('xrun');
                               final isAuto = chipText.startsWith('🛡️');
                               final isGit = chipText.startsWith('🔀');
+                              final isAdv = chipText.startsWith('⚔️');
 
                               return ActionChip(
                                 label: Row(
@@ -336,7 +433,8 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                                     if (isCmd) const Icon(Icons.terminal, size: 12, color: AppTheme.accentCyan),
                                     if (isAuto) const Icon(Icons.healing, size: 12, color: AppTheme.warning),
                                     if (isGit) const Icon(Icons.commit, size: 12, color: AppTheme.primaryLight),
-                                    if (isCmd || isAuto || isGit) const SizedBox(width: 4),
+                                    if (isAdv) const Icon(Icons.shield, size: 12, color: AppTheme.accentCyan),
+                                    if (isCmd || isAuto || isGit || isAdv) const SizedBox(width: 4),
                                     Text(
                                       chipText,
                                       style: TextStyle(
@@ -348,7 +446,9 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                                                 ? AppTheme.warning
                                                 : isGit
                                                     ? AppTheme.primaryLight
-                                                    : Colors.white70,
+                                                    : isAdv
+                                                        ? AppTheme.accentCyan
+                                                        : Colors.white70,
                                       ),
                                     ),
                                   ],
@@ -357,16 +457,23 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                                     ? const Color(0xFF0F2338)
                                     : isAuto
                                         ? const Color(0xFF2E2012)
-                                        : const Color(0xFF1E293B),
+                                        : isAdv
+                                            ? const Color(0xFF1E1B4B)
+                                            : const Color(0xFF1E293B),
                                 side: BorderSide(
                                   color: isCmd
                                       ? AppTheme.accentCyan.withValues(alpha: 0.4)
                                       : isAuto
                                           ? AppTheme.warning.withValues(alpha: 0.4)
-                                          : AppTheme.darkBorder,
+                                          : isAdv
+                                              ? const Color(0xFF6366F1)
+                                              : AppTheme.darkBorder,
                                 ),
                                 onPressed: () {
-                                  if (isAuto) {
+                                  if (isAdv) {
+                                    chatProvider.setAdversarialMode(true);
+                                    _focusNode.requestFocus();
+                                  } else if (isAuto) {
                                     _triggerAutoDebug();
                                   } else if (isGit) {
                                     _openGitCommitDialog();
@@ -425,7 +532,10 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(4),
                       onTap: () {
-                        if (chip.startsWith('🛡️')) {
+                        if (chip.startsWith('⚔️')) {
+                          chatProvider.toggleAdversarialMode();
+                          _focusNode.requestFocus();
+                        } else if (chip.startsWith('🛡️')) {
                           _triggerAutoDebug();
                         } else if (chip.startsWith('🔀')) {
                           _openGitCommitDialog();
@@ -441,14 +551,18 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                               ? const Color(0xFF14243B)
                               : chip.startsWith('🛡️')
                                   ? const Color(0xFF281C10)
-                                  : const Color(0xFF182336),
+                                  : chip.startsWith('⚔️')
+                                      ? const Color(0xFF1E1B4B)
+                                      : const Color(0xFF182336),
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
                             color: chip.startsWith('xrun')
                                 ? AppTheme.accentCyan.withValues(alpha: 0.3)
                                 : chip.startsWith('🛡️')
                                     ? AppTheme.warning.withValues(alpha: 0.3)
-                                    : AppTheme.darkBorder,
+                                    : chip.startsWith('⚔️')
+                                        ? const Color(0xFF6366F1)
+                                        : AppTheme.darkBorder,
                           ),
                         ),
                         child: Text(
@@ -460,7 +574,9 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                                 ? AppTheme.accentCyan
                                 : chip.startsWith('🛡️')
                                     ? AppTheme.warning
-                                    : Colors.white70,
+                                    : chip.startsWith('⚔️')
+                                        ? AppTheme.accentCyan
+                                        : Colors.white70,
                           ),
                         ),
                       ),
@@ -470,23 +586,63 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
             ),
           ),
 
-          // Input Box with xrun indicator
+          // Input & In-chat Terminal Bar
           Container(
-            padding: const EdgeInsets.all(10),
-            decoration: const BoxDecoration(
-              color: Color(0xFF131D30),
-              border: Border(top: BorderSide(color: AppTheme.darkBorder)),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isAdvMode ? const Color(0xFF0F1528) : const Color(0xFF131D30),
+              border: Border(top: BorderSide(color: isAdvMode ? const Color(0xFF6366F1).withValues(alpha: 0.5) : AppTheme.darkBorder)),
             ),
             child: Column(
               children: [
+                // xrun Live Indicator Pill
+                if (_isXRunDetected)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accentCyan.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: AppTheme.accentCyan.withValues(alpha: 0.5)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.terminal, size: 12, color: AppTheme.accentCyan),
+                              SizedBox(width: 4),
+                              Text(
+                                'Terminal Runner Active: Will execute shell command directly in workspace',
+                                style: TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppTheme.accentCyan),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Expanded(
-                      child: CallbackShortcuts(
-                        bindings: {
-                          const SingleActivator(LogicalKeyboardKey.enter, control: false, meta: false, shift: false): _sendMessage,
-                        },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: _isXRunDetected
+                              ? const Color(0xFF0D1C2E)
+                              : isAdvMode
+                                  ? const Color(0xFF131B36)
+                                  : const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _isXRunDetected
+                                ? AppTheme.accentCyan
+                                : isAdvMode
+                                    ? const Color(0xFF6366F1)
+                                    : AppTheme.darkBorder,
+                            width: (_isXRunDetected || isAdvMode) ? 1.2 : 1.0,
+                          ),
+                        ),
                         child: TextField(
                           controller: _inputController,
                           focusNode: _focusNode,
@@ -498,56 +654,54 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                             color: _isXRunDetected ? AppTheme.accentCyan : Colors.white,
                           ),
                           decoration: InputDecoration(
-                            hintText: isBusy
-                                ? 'Agent / Auto-Debug is working...'
-                                : 'Prompt agent, or type "xrun <cmd>" to execute in terminal...',
-                            hintStyle: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.35)),
-                            prefixIcon: _isXRunDetected
-                                ? Container(
-                                    padding: const EdgeInsets.all(8),
-                                    child: const Icon(Icons.terminal, size: 18, color: AppTheme.accentCyan),
-                                  )
-                                : const Icon(Icons.auto_awesome, size: 18, color: AppTheme.primaryLight),
+                            hintText: isAdvMode
+                                ? '⚔️ Adversarial Duel: Enter feature to build & stress-test (Blue Builder vs Red Hacker)...'
+                                : 'Ask Agent (e.g. create a counter widget) or type "xrun flutter test"...',
+                            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.35)),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            prefixIcon: Icon(
+                              _isXRunDetected
+                                  ? Icons.terminal
+                                  : isAdvMode
+                                      ? Icons.shield
+                                      : Icons.chat_bubble_outline,
+                              size: 18,
+                              color: _isXRunDetected || isAdvMode ? AppTheme.accentCyan : Colors.white38,
+                            ),
                           ),
+                          onSubmitted: (_) => _sendMessage(),
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    ElevatedButton(
+
+                    // Send Button
+                    ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: isBusy
-                            ? const Color(0xFF334155)
-                            : (_isXRunDetected ? AppTheme.accentCyan : AppTheme.primary),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        backgroundColor: _isXRunDetected
+                            ? AppTheme.accentCyan
+                            : isAdvMode
+                                ? const Color(0xFF4F46E5)
+                                : AppTheme.primary,
+                        foregroundColor: _isXRunDetected ? Colors.black : Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
-                      onPressed: isBusy ? null : _sendMessage,
-                      child: isBusy
+                      icon: isBusy
                           ? const SizedBox(
-                              width: 18,
-                              height: 18,
+                              width: 14,
+                              height: 14,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
-                          : Icon(
-                              _isXRunDetected ? Icons.play_arrow_rounded : Icons.send_rounded,
-                              size: 18,
-                            ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _isXRunDetected
-                          ? '⚡ xrun terminal execution active'
-                          : 'Press Enter to send (Shift+Enter for newline)',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: _isXRunDetected ? AppTheme.accentCyan : Colors.white.withValues(alpha: 0.3),
+                          : Icon(_isXRunDetected ? Icons.play_arrow : (isAdvMode ? Icons.flash_on : Icons.send), size: 16),
+                      label: Text(
+                        isBusy
+                            ? 'Processing...'
+                            : (isAdvMode ? 'Duel ⚔️' : (_isXRunDetected ? 'Run' : 'Send')),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                       ),
+                      onPressed: isBusy ? null : _sendMessage,
                     ),
                   ],
                 ),
