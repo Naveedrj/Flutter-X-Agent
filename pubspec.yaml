@@ -43,6 +43,7 @@ dependencies:
   path_provider: ^2.1.5
   uuid: ^4.6.0
   intl: ^0.20.2
+  http: ^1.2.0
   flutter_highlight: ^0.7.0
 
 dev_dependencies:

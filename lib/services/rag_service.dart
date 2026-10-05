@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
 import '../models/rag_chunk.dart';
 import 'workspace_service.dart';
 
