@@ -21,6 +21,7 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
 
   // Single Agent State
   late TextEditingController _apiKeyController;
+  late TextEditingController _customModelController;
   late LlmProviderType _selectedProvider;
   late String _selectedModel;
   late double _temperature;
@@ -29,11 +30,15 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
   // Adversarial Arena State
   late LlmProviderType _blueProvider;
   late String _selectedBlueModel;
+  late TextEditingController _blueCustomModelController;
   late TextEditingController _blueKeyController;
+  bool _obscureBlueKey = true;
 
   late LlmProviderType _redProvider;
   late String _selectedRedModel;
+  late TextEditingController _redCustomModelController;
   late TextEditingController _redKeyController;
+  bool _obscureRedKey = true;
 
   late int _maxRounds;
   late AdversarialAttackFocus _focus;
@@ -57,24 +62,30 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
       text: settings.apiKey == StorageService.defaultApiKeyPlaceholder ? '' : settings.apiKey,
     );
     _selectedModel = settings.model;
+    _customModelController = TextEditingController(text: settings.model);
     _temperature = settings.temperature;
 
     // Adversarial Blue Init
-    _blueProvider = settings.activeProvider;
-    _selectedBlueModel = settings.model;
+    _blueProvider = cfg.blueProvider;
+    _selectedBlueModel = cfg.blueModel.isNotEmpty ? cfg.blueModel : settings.model;
+    _blueCustomModelController = TextEditingController(text: _selectedBlueModel);
     _blueKeyController = TextEditingController(
-      text: settings.apiKey == StorageService.defaultApiKeyPlaceholder ? '' : settings.apiKey,
+      text: cfg.blueApiKey.isNotEmpty
+          ? cfg.blueApiKey
+          : (settings.apiKey == StorageService.defaultApiKeyPlaceholder ? '' : settings.apiKey),
     );
 
     // Adversarial Red Init
     _redProvider = cfg.redProvider;
-    final usableRedModels = _getUsableModelsForProvider(_redProvider, settings);
-    if (usableRedModels.any((m) => m.id == cfg.redModel)) {
-      _selectedRedModel = cfg.redModel;
-    } else {
-      _selectedRedModel = _getDefaultModelForProvider(_redProvider);
-    }
-    _redKeyController = TextEditingController(text: cfg.redApiKey);
+    _selectedRedModel = cfg.redModel.isNotEmpty ? cfg.redModel : _getDefaultModelForProvider(_redProvider);
+    _redCustomModelController = TextEditingController(text: _selectedRedModel);
+    _redKeyController = TextEditingController(
+      text: cfg.redApiKey.isNotEmpty
+          ? cfg.redApiKey
+          : (settings.storageService.getApiKey(provider: _redProvider) == StorageService.defaultApiKeyPlaceholder
+              ? ''
+              : settings.storageService.getApiKey(provider: _redProvider)),
+    );
 
     _maxRounds = cfg.maxRounds;
     _focus = cfg.focus;
@@ -85,7 +96,10 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
   void dispose() {
     _tabController.dispose();
     _apiKeyController.dispose();
+    _customModelController.dispose();
+    _blueCustomModelController.dispose();
     _blueKeyController.dispose();
+    _redCustomModelController.dispose();
     _redKeyController.dispose();
     _tab1Scroll.dispose();
     _tab2Scroll.dispose();
@@ -129,22 +143,41 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
     final advProvider = context.read<AdversarialProvider>();
 
     // 1. Save Single Agent Settings
+    final customSingle = _customModelController.text.trim();
+    final effectiveSingleModel = customSingle.isNotEmpty ? customSingle : _selectedModel;
     final keyToSave = _apiKeyController.text.trim().isEmpty
         ? StorageService.defaultApiKeyPlaceholder
         : _apiKeyController.text.trim();
+
     await settings.setActiveProvider(_selectedProvider);
     await settings.setApiKey(keyToSave, provider: _selectedProvider);
-    await settings.setModel(_selectedModel);
+    await settings.setModel(effectiveSingleModel);
     await settings.setTemperature(_temperature);
 
     // 2. Save Adversarial Arena Settings
+    final customBlue = _blueCustomModelController.text.trim();
+    final effectiveBlueModel = customBlue.isNotEmpty ? customBlue : _selectedBlueModel;
+
+    final customRed = _redCustomModelController.text.trim();
+    final effectiveRedModel = customRed.isNotEmpty ? customRed : _selectedRedModel;
+
+    final blueKeyToSave = _blueKeyController.text.trim().isNotEmpty ? _blueKeyController.text.trim() : keyToSave;
+    final redKeyToSave = _redKeyController.text.trim();
+
+    if (redKeyToSave.isNotEmpty) {
+      await settings.storageService.setApiKey(redKeyToSave, provider: _redProvider);
+    }
+    if (blueKeyToSave.isNotEmpty && blueKeyToSave != StorageService.defaultApiKeyPlaceholder) {
+      await settings.storageService.setApiKey(blueKeyToSave, provider: _blueProvider);
+    }
+
     final newAdvConfig = AdversarialConfig(
       blueProvider: _blueProvider,
-      blueModel: _selectedBlueModel,
-      blueApiKey: _blueKeyController.text.trim().isNotEmpty ? _blueKeyController.text.trim() : keyToSave,
+      blueModel: effectiveBlueModel,
+      blueApiKey: blueKeyToSave,
       redProvider: _redProvider,
-      redModel: _selectedRedModel,
-      redApiKey: _redKeyController.text.trim(),
+      redModel: effectiveRedModel,
+      redApiKey: redKeyToSave,
       maxRounds: _maxRounds,
       focus: _focus,
       temperature: _advTemperature,
@@ -168,8 +201,8 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
       ),
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: 640,
-          maxHeight: screenHeight * 0.88,
+          maxWidth: 680,
+          maxHeight: screenHeight * 0.90,
         ),
         child: Container(
           padding: const EdgeInsets.all(20),
@@ -334,6 +367,7 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
                         final modelsForP = _getUsableModelsForProvider(p, settings);
                         if (!modelsForP.any((m) => m.id == _selectedModel)) {
                           _selectedModel = modelsForP.isNotEmpty ? modelsForP.first.id : _getDefaultModelForProvider(p);
+                          _customModelController.text = _selectedModel;
                         }
                       });
                     }
@@ -349,12 +383,12 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${LlmProviderUtils.getProviderName(_selectedProvider)} API Key',
+                  '${LlmProviderUtils.getProviderName(_selectedProvider)} API Key / Host URL',
                   style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.white70),
                 ),
                 Text(
                   _selectedProvider == LlmProviderType.groq
-                      ? 'Instant Free: console.groq.com'
+                      ? 'Free: console.groq.com'
                       : _selectedProvider == LlmProviderType.gemini
                           ? 'aistudio.google.com'
                           : _selectedProvider == LlmProviderType.ollama
@@ -404,11 +438,11 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
 
             const SizedBox(height: 16),
 
-            // Model Dropdown Selector
+            // Model Dropdown & Custom Model Input
             Row(
               children: [
                 const Text(
-                  'MODEL DROPDOWN',
+                  'MODEL SELECTION',
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54),
                 ),
                 const Spacer(),
@@ -478,10 +512,35 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
                     );
                   }).toList(),
                   onChanged: (val) {
-                    if (val != null) setState(() => _selectedModel = val);
+                    if (val != null) {
+                      setState(() {
+                        _selectedModel = val;
+                        _customModelController.text = val;
+                      });
+                    }
                   },
                 ),
               ),
+            ),
+            const SizedBox(height: 8),
+
+            // Custom Model Text Input
+            TextField(
+              controller: _customModelController,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: Colors.white),
+              decoration: InputDecoration(
+                labelText: 'Or Type Custom Model Identifier',
+                labelStyle: const TextStyle(fontSize: 11, color: Colors.white60),
+                hintText: 'e.g. qwen2.5-coder:32b, deepseek-r1:14b, claude-3-7-sonnet',
+                hintStyle: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.25)),
+                prefixIcon: const Icon(Icons.edit_note, size: 16, color: AppTheme.accentCyan),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              onChanged: (val) {
+                if (val.trim().isNotEmpty) {
+                  setState(() => _selectedModel = val.trim());
+                }
+              },
             ),
 
             const SizedBox(height: 16),
@@ -580,6 +639,7 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
                                     _blueProvider = val;
                                     final list = _getUsableModelsForProvider(val, settings);
                                     _selectedBlueModel = list.isNotEmpty ? list.first.id : _getDefaultModelForProvider(val);
+                                    _blueCustomModelController.text = _selectedBlueModel;
                                   });
                                 }
                               },
@@ -613,13 +673,54 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
                                 );
                               }).toList(),
                               onChanged: (val) {
-                                if (val != null) setState(() => _selectedBlueModel = val);
+                                if (val != null) {
+                                  setState(() {
+                                    _selectedBlueModel = val;
+                                    _blueCustomModelController.text = val;
+                                  });
+                                }
                               },
                             ),
                           ),
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Blue Custom Model Name
+                  TextField(
+                    controller: _blueCustomModelController,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Blue Model Custom Name (Optional)',
+                      labelStyle: const TextStyle(fontSize: 11, color: Colors.white60),
+                      hintText: 'e.g. qwen2.5-coder:32b or custom identifier',
+                      hintStyle: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.25)),
+                      prefixIcon: const Icon(Icons.edit_note, size: 15, color: AppTheme.accentCyan),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                    onChanged: (val) {
+                      if (val.trim().isNotEmpty) setState(() => _selectedBlueModel = val.trim());
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  // Blue API Key
+                  TextField(
+                    controller: _blueKeyController,
+                    obscureText: _obscureBlueKey,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Blue Team API Key / Host URL',
+                      labelStyle: const TextStyle(fontSize: 11, color: Colors.white60),
+                      hintText: 'Leave empty to use global default key',
+                      hintStyle: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.25)),
+                      prefixIcon: const Icon(Icons.key, size: 15, color: AppTheme.accentCyan),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscureBlueKey ? Icons.visibility_off : Icons.visibility, size: 16, color: Colors.white54),
+                        onPressed: () => setState(() => _obscureBlueKey = !_obscureBlueKey),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -679,6 +780,11 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
                                     _redProvider = val;
                                     final list = _getUsableModelsForProvider(val, settings);
                                     _selectedRedModel = list.isNotEmpty ? list.first.id : _getDefaultModelForProvider(val);
+                                    _redCustomModelController.text = _selectedRedModel;
+                                    final savedRedKey = settings.storageService.getApiKey(provider: val);
+                                    if (savedRedKey != StorageService.defaultApiKeyPlaceholder && savedRedKey.isNotEmpty) {
+                                      _redKeyController.text = savedRedKey;
+                                    }
                                   });
                                 }
                               },
@@ -712,13 +818,54 @@ class _SettingsDialogState extends State<SettingsDialog> with SingleTickerProvid
                                 );
                               }).toList(),
                               onChanged: (val) {
-                                if (val != null) setState(() => _selectedRedModel = val);
+                                if (val != null) {
+                                  setState(() {
+                                    _selectedRedModel = val;
+                                    _redCustomModelController.text = val;
+                                  });
+                                }
                               },
                             ),
                           ),
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Red Custom Model Name
+                  TextField(
+                    controller: _redCustomModelController,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Red Model Custom Name (Optional)',
+                      labelStyle: const TextStyle(fontSize: 11, color: Colors.white60),
+                      hintText: 'e.g. llama3.3:70b or custom identifier',
+                      hintStyle: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.25)),
+                      prefixIcon: const Icon(Icons.edit_note, size: 15, color: Color(0xFFFB7185)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                    onChanged: (val) {
+                      if (val.trim().isNotEmpty) setState(() => _selectedRedModel = val.trim());
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  // Red API Key
+                  TextField(
+                    controller: _redKeyController,
+                    obscureText: _obscureRedKey,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Red Team API Key / Host URL',
+                      labelStyle: const TextStyle(fontSize: 11, color: Colors.white60),
+                      hintText: 'Enter API key or Ollama host for Red Team',
+                      hintStyle: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.25)),
+                      prefixIcon: const Icon(Icons.key, size: 15, color: Color(0xFFFB7185)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscureRedKey ? Icons.visibility_off : Icons.visibility, size: 16, color: Colors.white54),
+                        onPressed: () => setState(() => _obscureRedKey = !_obscureRedKey),
+                      ),
+                    ),
                   ),
                 ],
               ),

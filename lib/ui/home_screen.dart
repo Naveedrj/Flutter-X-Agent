@@ -148,38 +148,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 const Spacer(),
 
-                // Provider & Model Selector in Header
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppTheme.darkBorder),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: settings.availableModels.any((m) => m.id == settings.model)
-                          ? settings.model
-                          : (settings.availableModels.isNotEmpty ? settings.availableModels.first.id : null),
-                      dropdownColor: AppTheme.darkSurface,
-                      style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white),
-                      items: settings.availableModels.map((m) {
-                        return DropdownMenuItem<String>(
-                          value: m.id,
-                          child: Text(
-                            m.isFree ? '[FREE] ${m.displayName}' : m.displayName,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          final selected = settings.availableModels.firstWhere((m) => m.id == val);
-                          settings.setActiveProvider(selected.provider);
-                          settings.setModel(val);
-                        }
-                      },
+                // Active Model Indicator Badge (Click opens Settings)
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => const SettingsDialog(),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppTheme.darkBorder),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.smart_toy_outlined, size: 14, color: AppTheme.accentCyan),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${LlmProviderUtils.getProviderName(settings.activeProvider)} • ${settings.model}',
+                          style: const TextStyle(fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w600, color: Colors.white),
+                        ),
+                        const SizedBox(width: 5),
+                        const Icon(Icons.tune, size: 12, color: Colors.white38),
+                      ],
                     ),
                   ),
                 ),

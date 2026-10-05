@@ -1313,6 +1313,23 @@ CRITICAL SAFETY & EXECUTION DIRECTIVES:
 
       case 'delete_file':
         final path = args['path'] as String;
+        final normalized = path.trim().replaceAll('\\', '/').toLowerCase();
+        if (normalized == 'lib' ||
+            normalized == 'android' ||
+            normalized == 'ios' ||
+            normalized == 'web' ||
+            normalized == 'macos' ||
+            normalized == 'windows' ||
+            normalized == 'linux' ||
+            normalized == 'test' ||
+            normalized == '.' ||
+            normalized == '/' ||
+            normalized == 'pubspec.yaml') {
+          return {
+            'result': 'Safety Block: Deleting core project directory/file "$path" is forbidden.',
+            'diffStats': null,
+          };
+        }
         await snapshotService.captureFileBeforeEdit(turnId, path);
         final res = await workspaceService.deleteFile(path);
         return {'result': res, 'diffStats': '-deleted'};
