@@ -179,8 +179,23 @@ class AdversarialService {
       url = Uri.parse(apiKey.isNotEmpty && apiKey.startsWith('http') ? '$apiKey/v1/chat/completions' : 'http://localhost:11434/v1/chat/completions');
     }
 
+    String effectiveModel = model.trim();
+    if (provider == LlmProviderType.ollama) {
+      if (effectiveModel.contains('/')) {
+        effectiveModel = effectiveModel.split('/').last;
+      }
+      if (effectiveModel.endsWith(':free')) {
+        effectiveModel = effectiveModel.substring(0, effectiveModel.length - 5);
+      }
+      if (effectiveModel.isEmpty || effectiveModel.startsWith('gemini') || effectiveModel.startsWith('claude')) {
+        effectiveModel = 'qwen2.5-coder:7b';
+      }
+    } else if (effectiveModel.isEmpty) {
+      effectiveModel = provider == LlmProviderType.groq ? 'qwen-2.5-coder-32b' : 'deepseek/deepseek-r1:free';
+    }
+
     final payload = {
-      'model': model.trim().isNotEmpty ? model.trim() : (provider == LlmProviderType.groq ? 'qwen-2.5-coder-32b' : 'deepseek/deepseek-r1:free'),
+      'model': effectiveModel,
       'temperature': temperature,
       'messages': [
         {'role': 'system', 'content': systemPrompt},
@@ -199,7 +214,15 @@ class AdversarialService {
       try {
         errBody = jsonDecode(response.body);
       } catch (_) {}
-      throw Exception(errBody['error']?['message'] ?? '${provider.displayName} API Error: Status ${response.statusCode}');
+      final errMsg = errBody['error']?['message'] ?? errBody['error'] ?? '${provider.displayName} API Error: Status ${response.statusCode}';
+      if (provider == LlmProviderType.ollama && errMsg.toString().contains('not found')) {
+        throw Exception(
+          'Local Ollama model "$effectiveModel" is not downloaded yet.\n'
+          'Please run: `ollama pull $effectiveModel` in terminal\n'
+          'Or select an already downloaded model from Duel Config (⚙️).'
+        );
+      }
+      throw Exception(errMsg.toString());
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;

@@ -260,4 +260,109 @@ class HardenedAuthService {
       expect(session.messages.last.content, contains('Invalid API key'));
     });
   });
+
+  group('Autonomous Execution & Fallback Parser Verification', () {
+    test('Correctly extracts and maps all files and commands from markdown tutorial responses', () {
+      const mockLlmMarkdownTutorial = '''
+Okay, let's create the splash screen, onboarding screens, login, signup, and home screens for your e-commerce app, and then run it on Chrome.
+
+### Step 1: Add Splash Screen
+
+First, we'll add a splash screen using the `flutter_native_splash` package. If it's not already added, let's add it to your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_native_splash: ^2.0.5
+```
+
+Run:
+
+```sh
+flutter pub get
+flutter pub run flutter_native_splash:create
+```
+
+Now, add the splash screen image to your `android/app/src/main/res/drawable` directory and create a `splash_screen.xml` file in `android/app/src/main/res/drawable`.
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <color android:color="#FFFFFF"/>
+    </item>
+</layer-list>
+```
+
+### Step 2: Create Onboarding Screens
+
+Create a new file `onboarding.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+
+class OnboardingScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Scaffold(body: Center(child: Text("Onboarding")));
+}
+```
+
+### Step 3: Create Login, Signup, and Home Screens
+
+Create a new file `screens.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+
+class HomeScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Scaffold(body: Center(child: Text("Home")));
+}
+```
+
+### Step 4: Update `main.dart`
+
+Update your `main.dart` to include these screens:
+
+```dart
+import 'package:flutter/material.dart';
+import 'onboarding.dart';
+
+void main() => runApp(MaterialApp(home: OnboardingScreen()));
+```
+''';
+
+      final extractedFiles = agentService.extractMarkdownFileBlocks(mockLlmMarkdownTutorial);
+      expect(extractedFiles.containsKey('pubspec.yaml'), isTrue);
+      expect(extractedFiles['pubspec.yaml'], contains('flutter_native_splash'));
+
+      expect(extractedFiles.containsKey('android/app/src/main/res/drawable/splash_screen.xml'), isTrue);
+      expect(extractedFiles['android/app/src/main/res/drawable/splash_screen.xml'], contains('<layer-list'));
+
+      expect(extractedFiles.containsKey('lib/onboarding.dart'), isTrue);
+      expect(extractedFiles['lib/onboarding.dart'], contains('class OnboardingScreen'));
+
+      expect(extractedFiles.containsKey('lib/screens.dart'), isTrue);
+      expect(extractedFiles['lib/screens.dart'], contains('class HomeScreen'));
+
+      expect(extractedFiles.containsKey('lib/main.dart'), isTrue);
+      expect(extractedFiles['lib/main.dart'], contains('void main()'));
+
+      final extractedCommands = agentService.extractMarkdownCommands(mockLlmMarkdownTutorial);
+      expect(extractedCommands, contains('flutter pub get'));
+      expect(extractedCommands, contains('flutter pub run flutter_native_splash:create'));
+    });
+
+    test('Path normalizer correctly resolves paths and directory hints', () {
+      expect(agentService.normalizeFilePath('onboarding.dart'), 'lib/onboarding.dart');
+      expect(agentService.normalizeFilePath('lib/screens/login.dart'), 'lib/screens/login.dart');
+      expect(agentService.normalizeFilePath('pubspec.yaml'), 'pubspec.yaml');
+      expect(
+        agentService.normalizeFilePath('splash_screen.xml', directoryHint: 'android/app/src/main/res/drawable'),
+        'android/app/src/main/res/drawable/splash_screen.xml',
+      );
+      expect(agentService.normalizeFilePath('https://flutter.dev/test.dart'), isNull);
+    });
+  });
 }

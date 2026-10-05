@@ -133,6 +133,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
                           _selectedProvider = p;
                           final savedKey = settings.storageService.getApiKey(provider: p);
                           _apiKeyController.text = savedKey == StorageService.defaultApiKeyPlaceholder ? '' : savedKey;
+                          
+                          // Switch model to first usable model for this provider if current model doesn't match
+                          final modelsForProvider = settings.availableModels.where((m) => m.provider == p).toList();
+                          if (!modelsForProvider.any((m) => m.id == _selectedModel)) {
+                            _selectedModel = modelsForProvider.isNotEmpty ? modelsForProvider.first.id : _getDefaultModelForProvider(p);
+                          }
                         });
                       }
                     },
@@ -344,5 +350,20 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ),
       ),
     );
+  }
+
+  String _getDefaultModelForProvider(LlmProviderType p) {
+    switch (p) {
+      case LlmProviderType.gemini:
+        return 'gemini-3.8-flash';
+      case LlmProviderType.anthropic:
+        return 'claude-3-5-sonnet-20241022';
+      case LlmProviderType.groq:
+        return 'qwen-2.5-coder-32b';
+      case LlmProviderType.openrouter:
+        return 'qwen/qwen-2.5-coder-32b-instruct:free';
+      case LlmProviderType.ollama:
+        return 'qwen2.5-coder:7b';
+    }
   }
 }

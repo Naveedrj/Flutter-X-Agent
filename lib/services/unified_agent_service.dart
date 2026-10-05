@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
@@ -178,15 +179,27 @@ class UnifiedAgentService {
   String _buildSystemPrompt() {
     final root = workspaceService.rootPath ?? 'No directory selected yet';
     return '''
-You are an expert autonomous AI Coding Agent pair-programming in a local workspace.
+You are Flutter-X-Agent, an elite autonomous AI Software Engineer with direct programmatic access to this workspace.
 Current Workspace Directory: $root
 
-CAPABILITIES & RULES:
-1. ALWAYS inspect workspace files using `search_codebase`, `list_directory`, and `read_file` before writing code.
-2. You can read, write, edit, move, and delete files with the provided tools.
-3. You can execute shell commands with `execute_terminal_command`.
-4. When writing code, write clean, robust code and preserve existing formatting.
-5. If creating an HTML/Web UI component or interactive widget, output clean HTML/CSS/JS inside a ```html ``` block so the app's right-hand Web View panel can render it directly.
+MISSION & CORE BEHAVIOR:
+- YOU ARE AN AUTONOMOUS AGENT, NOT A PASSIVE CHATBOT.
+- NEVER give step-by-step tutorials or tell the user to manually create/edit files or run terminal commands.
+- YOU MUST EXECUTE ALL ACTIONS DIRECTLY using your provided tools:
+  • `write_file`: Create or overwrite files in the workspace (automatically creates any parent directories).
+  • `edit_file`: Replace specific snippets inside existing files with target_content and replacement_content.
+  • `execute_terminal_command`: Run shell commands directly (e.g., `flutter pub get`, `flutter test`, `flutter analyze`).
+  • `read_file`, `list_directory`, `search_codebase`: Inspect existing code before writing or editing.
+  • `delete_file`, `move_file`: Manage workspace files.
+
+CRITICAL DIRECTIVES:
+1. When asked to build, create, or modify screens/features (e.g. splash screen, onboarding, login, signup, home, state management, routes):
+   DO NOT output conversational tutorials. IMMEDIATELY call `write_file` for each file (e.g. `lib/main.dart`, `lib/onboarding.dart`, `lib/screens.dart`, `pubspec.yaml`, `android/...`).
+2. When packages or assets need to be configured:
+   Update `pubspec.yaml` using `write_file` or `edit_file`, and run `flutter pub get` via `execute_terminal_command`.
+3. If building an interactive web preview or HTML component, output clean HTML inside ```html ``` code blocks.
+4. Always write complete, production-ready, compile-clean code with all required imports.
+5. EXECUTE IMMEDIATELY. Do not ask for user confirmation to write files—execute the tools now!
 ''';
   }
 
@@ -295,6 +308,7 @@ CAPABILITIES & RULES:
     final systemPrompt = _buildSystemPrompt();
     final finalResponseBuffer = StringBuffer();
     int loopCount = 0;
+    int executedToolsCount = 0;
 
     while (loopCount < 15) {
       loopCount++;
@@ -341,6 +355,7 @@ CAPABILITIES & RULES:
 
       final functionResponseParts = <Map<String, dynamic>>[];
       for (final call in functionCalls) {
+        executedToolsCount++;
         final name = call['name'] as String? ?? '';
         final args = (call['args'] as Map<String, dynamic>?) ?? {};
 
@@ -375,6 +390,20 @@ CAPABILITIES & RULES:
       contents.add({'role': 'user', 'parts': functionResponseParts});
     }
 
+    if (executedToolsCount == 0) {
+      await _autoApplyMarkdownActions(
+        responseText: finalResponseBuffer.toString(),
+        turnId: turnId,
+        onToolStarted: onToolStarted,
+        onToolCompleted: onToolCompleted,
+        onContentUpdated: (updated) {
+          finalResponseBuffer.clear();
+          finalResponseBuffer.write(updated);
+          onContentUpdated(updated);
+        },
+      );
+    }
+
     if (finalResponseBuffer.isEmpty) onContentUpdated('Task completed.');
   }
 
@@ -406,6 +435,7 @@ CAPABILITIES & RULES:
     final systemPrompt = _buildSystemPrompt();
     final finalResponseBuffer = StringBuffer();
     int loopCount = 0;
+    int executedToolsCount = 0;
 
     while (loopCount < 15) {
       loopCount++;
@@ -454,6 +484,7 @@ CAPABILITIES & RULES:
 
       final toolResultContents = <Map<String, dynamic>>[];
       for (final call in toolUseCalls) {
+        executedToolsCount++;
         final callId = call['id'] as String;
         final name = call['name'] as String;
         final input = (call['input'] as Map<String, dynamic>?) ?? {};
@@ -486,6 +517,20 @@ CAPABILITIES & RULES:
       }
 
       messages.add({'role': 'user', 'content': toolResultContents});
+    }
+
+    if (executedToolsCount == 0) {
+      await _autoApplyMarkdownActions(
+        responseText: finalResponseBuffer.toString(),
+        turnId: turnId,
+        onToolStarted: onToolStarted,
+        onToolCompleted: onToolCompleted,
+        onContentUpdated: (updated) {
+          finalResponseBuffer.clear();
+          finalResponseBuffer.write(updated);
+          onContentUpdated(updated);
+        },
+      );
     }
 
     if (finalResponseBuffer.isEmpty) onContentUpdated('Task completed.');
@@ -532,14 +577,28 @@ CAPABILITIES & RULES:
     }
     messages.add({'role': 'user', 'content': promptWithRag});
 
+    String effectiveModel = modelName.trim();
+    if (provider == LlmProviderType.ollama) {
+      if (effectiveModel.contains('/')) {
+        effectiveModel = effectiveModel.split('/').last;
+      }
+      if (effectiveModel.endsWith(':free')) {
+        effectiveModel = effectiveModel.substring(0, effectiveModel.length - 5);
+      }
+      if (effectiveModel.isEmpty || effectiveModel.startsWith('gemini') || effectiveModel.startsWith('claude')) {
+        effectiveModel = 'qwen2.5-coder:7b';
+      }
+    }
+
     final tools = _buildOpenAiTools();
     final finalResponseBuffer = StringBuffer();
     int loopCount = 0;
+    int executedToolsCount = 0;
 
     while (loopCount < 15) {
       loopCount++;
       final payload = {
-        'model': modelName,
+        'model': effectiveModel,
         'temperature': temperature,
         'messages': messages,
         'tools': tools,
@@ -554,7 +613,15 @@ CAPABILITIES & RULES:
 
       final responseBody = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode != 200) {
-        throw Exception(responseBody['error']?['message'] ?? 'API Error: ${response.statusCode}');
+        final errMsg = responseBody['error']?['message'] ?? responseBody['error'] ?? 'API Error: ${response.statusCode}';
+        if (provider == LlmProviderType.ollama && errMsg.toString().contains('not found')) {
+          throw Exception(
+            'Local Ollama model "$effectiveModel" is not downloaded yet.\n'
+            'Please run in terminal: `ollama pull $effectiveModel`\n'
+            'Or select an already installed model from Settings (⚙️).'
+          );
+        }
+        throw Exception(errMsg.toString());
       }
 
       final choices = responseBody['choices'] as List<dynamic>? ?? [];
@@ -573,6 +640,7 @@ CAPABILITIES & RULES:
       if (toolCalls.isEmpty) break;
 
       for (final call in toolCalls) {
+        executedToolsCount++;
         final callId = call['id'] as String? ?? const Uuid().v4();
         final fn = call['function'] as Map<String, dynamic>;
         final name = fn['name'] as String;
@@ -610,7 +678,308 @@ CAPABILITIES & RULES:
       }
     }
 
+    if (executedToolsCount == 0) {
+      await _autoApplyMarkdownActions(
+        responseText: finalResponseBuffer.toString(),
+        turnId: turnId,
+        onToolStarted: onToolStarted,
+        onToolCompleted: onToolCompleted,
+        onContentUpdated: (updated) {
+          finalResponseBuffer.clear();
+          finalResponseBuffer.write(updated);
+          onContentUpdated(updated);
+        },
+      );
+    }
+
     if (finalResponseBuffer.isEmpty) onContentUpdated('Task completed.');
+  }
+
+  /// Automatically parses and executes files and commands emitted in markdown text responses
+  Future<void> _autoApplyMarkdownActions({
+    required String responseText,
+    required String turnId,
+    required Function(ToolCallLog) onToolStarted,
+    required Function(ToolCallLog) onToolCompleted,
+    required Function(String updatedContent) onContentUpdated,
+  }) async {
+    if (responseText.trim().isEmpty) return;
+
+    final createdFiles = <String>[];
+    final executedCommands = <String>[];
+
+    // 1. Check for JSON tool calls formatted in text
+    final jsonToolRegex = RegExp(
+      r'\{\s*"name"\s*:\s*"(write_file|edit_file|execute_terminal_command)"\s*,\s*"(?:parameters|arguments)"\s*:\s*(\{[\s\S]*?\})\s*\}',
+      caseSensitive: false,
+    );
+    for (final match in jsonToolRegex.allMatches(responseText)) {
+      final toolName = match.group(1)!;
+      final rawArgs = match.group(2)!;
+      try {
+        final args = jsonDecode(rawArgs) as Map<String, dynamic>;
+        final toolLog = ToolCallLog(
+          id: const Uuid().v4(),
+          toolName: toolName,
+          arguments: args,
+          status: ToolStatus.running,
+        );
+        onToolStarted(toolLog);
+        try {
+          final res = await _executeTool(toolName, args, turnId);
+          toolLog.status = ToolStatus.success;
+          toolLog.output = res.toString();
+          if (toolName == 'write_file' || toolName == 'edit_file') {
+            createdFiles.add(args['path']?.toString() ?? 'file');
+          } else if (toolName == 'execute_terminal_command') {
+            executedCommands.add(args['command']?.toString() ?? 'command');
+          }
+        } catch (err) {
+          toolLog.status = ToolStatus.failed;
+          toolLog.output = 'Error executing $toolName: $err';
+        }
+        onToolCompleted(toolLog);
+      } catch (_) {}
+    }
+
+    // 2. Extract Markdown code blocks with associated file names
+    final extractedFiles = extractMarkdownFileBlocks(responseText);
+    for (final entry in extractedFiles.entries) {
+      final path = entry.key;
+      final content = entry.value;
+
+      if (createdFiles.contains(path)) continue;
+
+      final toolLog = ToolCallLog(
+        id: const Uuid().v4(),
+        toolName: 'write_file',
+        arguments: {'path': path, 'content': content},
+        status: ToolStatus.running,
+      );
+      onToolStarted(toolLog);
+
+      try {
+        final res = await _executeTool('write_file', {'path': path, 'content': content}, turnId);
+        toolLog.status = ToolStatus.success;
+        toolLog.output = 'Auto-written file: $path ($res)';
+        createdFiles.add(path);
+      } catch (err) {
+        toolLog.status = ToolStatus.failed;
+        toolLog.output = 'Error auto-writing $path: $err';
+      }
+      onToolCompleted(toolLog);
+    }
+
+    // 3. Extract safe setup/build commands mentioned to run
+    final extractedCmds = extractMarkdownCommands(responseText);
+    for (final cmd in extractedCmds) {
+      if (executedCommands.contains(cmd)) continue;
+      final toolLog = ToolCallLog(
+        id: const Uuid().v4(),
+        toolName: 'execute_terminal_command',
+        arguments: {'command': cmd},
+        status: ToolStatus.running,
+      );
+      onToolStarted(toolLog);
+
+      try {
+        final res = await _executeTool('execute_terminal_command', {'command': cmd}, turnId);
+        toolLog.status = ToolStatus.success;
+        toolLog.output = res.toString();
+        executedCommands.add(cmd);
+      } catch (err) {
+        toolLog.status = ToolStatus.failed;
+        toolLog.output = 'Error executing $cmd: $err';
+      }
+      onToolCompleted(toolLog);
+    }
+
+    if (createdFiles.isNotEmpty || executedCommands.isNotEmpty) {
+      final summaryBuffer = StringBuffer(responseText);
+      summaryBuffer.writeln('\n\n---');
+      summaryBuffer.writeln('⚡ **Autonomous Actions Auto-Executed:**');
+      for (final f in createdFiles) {
+        summaryBuffer.writeln('• 📄 Auto-generated workspace file: `$f`');
+      }
+      for (final c in executedCommands) {
+        summaryBuffer.writeln('• 💻 Executed terminal command: `$c`');
+      }
+      onContentUpdated(summaryBuffer.toString());
+    }
+  }
+
+  /// Extracts file names and contents from markdown text
+  Map<String, String> extractMarkdownFileBlocks(String text) {
+    final files = <String, String>{};
+    final codeBlockRegex = RegExp(r'```([a-zA-Z0-9_\-]*)\n([\s\S]*?)```');
+    final matches = codeBlockRegex.allMatches(text).toList();
+
+    for (int i = 0; i < matches.length; i++) {
+      final match = matches[i];
+      final lang = match.group(1)?.trim().toLowerCase() ?? '';
+      final code = match.group(2) ?? '';
+
+      if (lang == 'sh' || lang == 'bash' || lang == 'shell' || lang == 'zsh') {
+        continue;
+      }
+
+      String? detectedPath;
+      String? dirHint;
+
+      // 1. Check first 3 lines of code for path comments
+      final codeLines = code.split('\n').take(3);
+      for (final line in codeLines) {
+        final commentMatch = RegExp(
+          r'^(?:\/\/|#|<!--|\/\*)\s*(?:file:\s*)?([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)(?:\s*-->|\s*\*\/)?',
+          caseSensitive: false,
+        ).firstMatch(line.trim());
+        if (commentMatch != null) {
+          detectedPath = commentMatch.group(1);
+          break;
+        }
+      }
+
+      // 2. Look back in text before this code block (bounded by previous code block end)
+      if (detectedPath == null) {
+        final prevEnd = i > 0 ? matches[i - 1].end : 0;
+        final lookbackStart = math.max(prevEnd, match.start - 400);
+        final lookback = text.substring(lookbackStart, match.start);
+
+        final dirFileMatch1 = RegExp(
+          r'(?:create|add|place|put)(?: a)?\s*[`*"]?([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)[`*"]?\s*(?:file)?\s*in\s*(?:the\s*)?(?:directory\s*)?[`*"]?([a-zA-Z0-9_\-./]+)[`*"]?',
+          caseSensitive: false,
+        ).allMatches(lookback).lastOrNull;
+
+        final dirFileMatch2 = RegExp(
+          r'in\s*(?:the\s*)?(?:directory\s*)?[`*"]?([a-zA-Z0-9_\-./]+)[`*"]?,?\s*(?:create|add|place)\s*(?:a\s*)?(?:new\s*)?[`*"]?([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)[`*"]?',
+          caseSensitive: false,
+        ).allMatches(lookback).lastOrNull;
+
+        if (dirFileMatch1 != null) {
+          detectedPath = dirFileMatch1.group(1);
+          dirHint = dirFileMatch1.group(2);
+        } else if (dirFileMatch2 != null) {
+          dirHint = dirFileMatch2.group(1);
+          detectedPath = dirFileMatch2.group(2);
+        } else {
+          final generalMatch = RegExp(
+            r'(?:create|update|add|edit|modify|in|to|file|filename|new file)\s+(?:a\s+)?(?:new\s+)?(?:file\s+)?(?:it\s+to\s+)?(?:your\s+)?[`*"]?([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)[`*"]?',
+            caseSensitive: false,
+          ).allMatches(lookback).lastOrNull;
+
+          if (generalMatch != null) {
+            detectedPath = generalMatch.group(1);
+          } else {
+            final boldOrHeader = RegExp(
+              r'(?:###|##|#|\*\*|`)\s*(?:Step \d+:?\s*)?(?:[a-zA-Z0-9_\- ]+)?([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)(?:\*\*|`)?:?',
+              caseSensitive: false,
+            ).allMatches(lookback).lastOrNull;
+            if (boldOrHeader != null) {
+              detectedPath = boldOrHeader.group(1);
+            }
+          }
+        }
+      }
+
+      if (detectedPath != null) {
+        final resolved = normalizeFilePath(detectedPath, directoryHint: dirHint);
+        if (resolved != null && code.trim().isNotEmpty) {
+          files[resolved] = code.trim();
+        }
+      }
+    }
+
+    return files;
+  }
+
+  /// Extracts runnable terminal commands from markdown text
+  List<String> extractMarkdownCommands(String text) {
+    final commands = <String>[];
+    final codeBlockRegex = RegExp(r'```([a-zA-Z0-9_\-]*)\s*\r?\n([\s\S]*?)```');
+    final matches = codeBlockRegex.allMatches(text);
+
+    for (final match in matches) {
+      final lang = match.group(1)?.trim().toLowerCase() ?? '';
+      final content = match.group(2) ?? '';
+
+      final isShellBlock = lang == 'sh' ||
+          lang == 'bash' ||
+          lang == 'shell' ||
+          lang == 'zsh' ||
+          lang == 'terminal' ||
+          lang == 'cmd' ||
+          lang == '';
+
+      final lines = content.split('\n');
+      for (final rawLine in lines) {
+        final line = rawLine.trim();
+        if (line.isEmpty || line.startsWith('#') || line.startsWith('//')) continue;
+
+        if (line.startsWith('flutter ') ||
+            line.startsWith('dart ') ||
+            line.startsWith('npm ') ||
+            line.startsWith('pod ')) {
+          if (!commands.contains(line)) {
+            commands.add(line);
+          }
+        }
+      }
+    }
+    return commands;
+  }
+
+  /// Normalizes a raw file path (adding directory prefix if needed)
+  String? normalizeFilePath(String rawPath, {String? directoryHint}) {
+    if (rawPath.contains('http:') ||
+        rawPath.contains('https:') ||
+        rawPath.contains('://') ||
+        rawPath.contains('package:') ||
+        rawPath.contains('www.')) {
+      return null;
+    }
+
+    var clean = rawPath
+        .replaceAll('`', '')
+        .replaceAll('"', '')
+        .replaceAll("'", '')
+        .replaceAll('*', '')
+        .replaceAll(':', '')
+        .trim();
+
+    if (clean.isEmpty) {
+      return null;
+    }
+
+    if (directoryHint != null && directoryHint.isNotEmpty && !clean.contains('/')) {
+      var cleanDir = directoryHint
+          .replaceAll('`', '')
+          .replaceAll('"', '')
+          .replaceAll("'", '')
+          .trim();
+      if (cleanDir.endsWith('/')) cleanDir = cleanDir.substring(0, cleanDir.length - 1);
+      clean = '$cleanDir/$clean';
+    }
+
+    if (clean.startsWith('/')) {
+      clean = clean.substring(1);
+    }
+
+    final extMatch = RegExp(r'\.([a-zA-Z0-9]+)$').firstMatch(clean);
+    if (extMatch == null) return null;
+    final ext = extMatch.group(1)!.toLowerCase();
+
+    final validExts = {
+      'dart', 'yaml', 'yml', 'xml', 'json', 'js', 'ts', 'html', 'css',
+      'py', 'sh', 'kt', 'swift', 'java', 'cpp', 'c', 'h', 'sql', 'md',
+      'txt', 'gradle', 'properties', 'env', 'plist',
+    };
+    if (!validExts.contains(ext)) return null;
+
+    if (ext == 'dart' && !clean.contains('/')) {
+      clean = 'lib/$clean';
+    }
+
+    return clean;
   }
 
   // --- DYNAMIC MODEL FETCHER API ---
