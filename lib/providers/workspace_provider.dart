@@ -61,6 +61,9 @@ class WorkspaceProvider extends ChangeNotifier {
   List<String> get terminalLogs => List.unmodifiable(_terminalLogs);
   bool get isCommandRunning => _isCommandRunning;
 
+  String get projectType => workspaceService.detectProjectType();
+  String get defaultTestCommand => workspaceService.detectTestCommand();
+
   void _initSubscriptions() {
     _ragSub = ragService.statsStream.listen((stats) {
       _ragStats = stats;

@@ -26,17 +26,22 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
   bool _showLiveTerminalDrawer = false;
   bool _isXRunDetected = false;
 
-  final List<String> _quickActionChips = [
-    '⚔️ Adversarial Duel (Blue vs Red)',
-    '🛡️ Auto-Debug & Fix Tests',
-    '🔀 AI Commit & Push',
-    'xrun flutter test',
-    'xrun flutter pub get',
-    'xrun git status',
-    'xrun ls -la',
-    '🔍 Analyze codebase architecture',
-    '📝 Create README.md',
-  ];
+  List<String> _getQuickActionChips(WorkspaceProvider workspace) {
+    final testCmd = workspace.defaultTestCommand;
+    final isFlutter = testCmd.contains('flutter');
+    return [
+      '⚔️ Adversarial Duel (Blue vs Red)',
+      '🛡️ Auto-Debug & Fix Tests',
+      '🔀 AI Commit & Push',
+      'xrun $testCmd',
+      if (isFlutter) 'xrun flutter pub get',
+      if (!isFlutter && testCmd.contains('npm')) 'xrun npm install',
+      'xrun git status',
+      'xrun ls -la',
+      '🔍 Analyze codebase architecture',
+      '📝 Create README.md',
+    ];
+  }
 
   @override
   void initState() {
@@ -110,7 +115,8 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
       return;
     }
 
-    chatProvider.runAutoDebug('flutter test');
+    final testCmd = workspace.defaultTestCommand;
+    chatProvider.runAutoDebug(testCmd);
     _scrollToBottom();
   }
 
@@ -441,7 +447,7 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                             alignment: WrapAlignment.center,
                             spacing: 8,
                             runSpacing: 8,
-                            children: _quickActionChips.map((chipText) {
+                            children: _getQuickActionChips(workspaceProvider).map((chipText) {
                               final isCmd = chipText.startsWith('xrun');
                               final isAuto = chipText.startsWith('🛡️');
                               final isGit = chipText.startsWith('🔀');
@@ -603,7 +609,7 @@ class _AgentChatTerminalViewState extends State<AgentChatTerminalView> {
                           decoration: InputDecoration(
                             hintText: isAdvMode
                                 ? '⚔️ Duel: Enter feature to build & stress-test (Blue vs Red)...'
-                                : 'Ask Agent (e.g. create a counter widget) or type "xrun flutter test"...',
+                                : 'Ask Agent (e.g. create a counter) or type "xrun ${workspaceProvider.defaultTestCommand}"...',
                             hintStyle: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.35)),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

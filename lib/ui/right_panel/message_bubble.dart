@@ -267,7 +267,9 @@ class MessageBubble extends StatelessWidget {
                 const Icon(Icons.shield, size: 15, color: AppTheme.accentCyan),
                 const SizedBox(width: 6),
                 Text(
-                  '🔵 BLUE TEAM (BUILDER) • ROUND ${message.roundNumber ?? 1}',
+                  message.speakerTag == 'blue_defense'
+                      ? '🔵 BLUE TEAM (PATCH & HARDEN) • CYCLE ${message.roundNumber ?? 1}'
+                      : '🔵 BLUE TEAM (BUILDER) • CYCLE ${message.roundNumber ?? 1}',
                   style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, fontFamily: 'monospace', color: AppTheme.accentCyan),
                 ),
                 const Spacer(),
@@ -354,7 +356,7 @@ class MessageBubble extends StatelessWidget {
                 const Icon(Icons.coronavirus_outlined, size: 15, color: Color(0xFFF87171)),
                 const SizedBox(width: 6),
                 Text(
-                  '🔴 RED TEAM (HACKER) • ROUND ${message.roundNumber ?? 1}',
+                  '🔴 RED TEAM (HACKER) • CYCLE ${message.roundNumber ?? 1}',
                   style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, fontFamily: 'monospace', color: Color(0xFFF87171)),
                 ),
                 const Spacer(),
@@ -431,6 +433,7 @@ class MessageBubble extends StatelessWidget {
     final workspace = context.read<WorkspaceProvider>();
     final chat = context.read<ChatProvider>();
     final targetPath = workspace.currentOpenFilePath ?? 'lib/main.dart';
+    final testCmd = workspace.defaultTestCommand;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -514,8 +517,8 @@ class MessageBubble extends StatelessWidget {
                   minimumSize: const Size(0, 28),
                 ),
                 icon: const Icon(Icons.play_arrow_outlined, size: 13),
-                label: const Text('xrun flutter test', style: TextStyle(fontSize: 11)),
-                onPressed: () => chat.executeXRunCommand('flutter test'),
+                label: Text('xrun $testCmd', style: const TextStyle(fontSize: 11)),
+                onPressed: () => chat.executeXRunCommand(testCmd),
               ),
             ],
           ),

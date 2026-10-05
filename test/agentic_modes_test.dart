@@ -171,7 +171,7 @@ void main() {
         maxRounds: 3,
       );
       expect(redAttack, contains('LoginForm'));
-      expect(redAttack, contains('Round 1 of 3'));
+      expect(redAttack, contains('Cycle 1 of 3'));
     });
 
     test('Adversarial Response Parsers accurately extract code and exploits', () {
@@ -363,6 +363,105 @@ void main() => runApp(MaterialApp(home: OnboardingScreen()));
         'android/app/src/main/res/drawable/splash_screen.xml',
       );
       expect(agentService.normalizeFilePath('https://flutter.dev/test.dart'), isNull);
+    });
+  });
+
+  group('Dynamic Technology & Multi-Stack Test Runner Detection', () {
+    test('Detects Flutter and Dart workspaces correctly', () async {
+      final flutterDir = await Directory.systemTemp.createTemp('flutter_proj_');
+      final pubspec = File('${flutterDir.path}/pubspec.yaml');
+      await pubspec.writeAsString('''
+name: my_app
+dependencies:
+  flutter:
+    sdk: flutter
+''');
+      workspaceService.setRoot(flutterDir.path);
+      expect(workspaceService.detectProjectType(), 'Flutter');
+      expect(workspaceService.detectTestCommand(), 'flutter test');
+      expect(workspaceProvider.defaultTestCommand, 'flutter test');
+      await flutterDir.delete(recursive: true);
+    });
+
+    test('Detects Node.js, TypeScript, and lockfiles correctly', () async {
+      final nodeDir = await Directory.systemTemp.createTemp('node_proj_');
+      await File('${nodeDir.path}/package.json').writeAsString('{"name": "test"}');
+      await File('${nodeDir.path}/tsconfig.json').writeAsString('{}');
+      await File('${nodeDir.path}/pnpm-lock.yaml').writeAsString('');
+
+      workspaceService.setRoot(nodeDir.path);
+      expect(workspaceService.detectProjectType(), 'TypeScript');
+      expect(workspaceService.detectTestCommand(), 'pnpm test');
+      await nodeDir.delete(recursive: true);
+    });
+
+    test('Detects Python, Rust, and Go workspaces accurately', () async {
+      // Python
+      final pyDir = await Directory.systemTemp.createTemp('py_proj_');
+      await File('${pyDir.path}/pytest.ini').writeAsString('');
+      workspaceService.setRoot(pyDir.path);
+      expect(workspaceService.detectProjectType(), 'Python');
+      expect(workspaceService.detectTestCommand(), 'pytest');
+      await pyDir.delete(recursive: true);
+
+      // Rust
+      final rustDir = await Directory.systemTemp.createTemp('rust_proj_');
+      await File('${rustDir.path}/Cargo.toml').writeAsString('[package]\nname = "test"');
+      workspaceService.setRoot(rustDir.path);
+      expect(workspaceService.detectProjectType(), 'Rust');
+      expect(workspaceService.detectTestCommand(), 'cargo test');
+      await rustDir.delete(recursive: true);
+
+      // Go
+      final goDir = await Directory.systemTemp.createTemp('go_proj_');
+      await File('${goDir.path}/go.mod').writeAsString('module test');
+      workspaceService.setRoot(goDir.path);
+      expect(workspaceService.detectProjectType(), 'Go');
+      expect(workspaceService.detectTestCommand(), 'go test ./...');
+      await goDir.delete(recursive: true);
+    });
+
+    test('buildConsensusSummary renders issues list and stats clearly', () {
+      final summaryWithIssues = adversarialService.buildConsensusSummary(
+        totalCycles: 1,
+        maxCycles: 3,
+        vulnerabilities: [
+          'Plaintext password comparison without Argon2 hashing.',
+          'Missing input sanitization allows SQL/XSS injection.',
+        ],
+        optimizations: [
+          'Uncached authentication tokens causing repeated disk reads.',
+        ],
+      );
+
+      expect(summaryWithIssues, contains('### 🛡️ Adversarial Hardening Complete!'));
+      expect(summaryWithIssues, contains('Issues Discovered by Red Team & Hardened by Blue Team:'));
+      expect(summaryWithIssues, contains('• 🚨 **Vulnerability Fixed**: Plaintext password comparison'));
+      expect(summaryWithIssues, contains('• 🚨 **Vulnerability Fixed**: Missing input sanitization'));
+      expect(summaryWithIssues, contains('• ⚡ **Optimization Applied**: Uncached authentication tokens'));
+      expect(summaryWithIssues, contains('Total Issues Neutralized**: 3'));
+      expect(summaryWithIssues, contains('Adversarial Cycles**: 1 of 3'));
+
+      final summaryClean = adversarialService.buildConsensusSummary(
+        totalCycles: 1,
+        maxCycles: 1,
+        vulnerabilities: [],
+        optimizations: [],
+      );
+      expect(summaryClean, contains('Clean Baseline'));
+      expect(summaryClean, contains('Total Issues Neutralized**: 0'));
+    });
+
+    test('ChatMessage and DebateTurn accurately reflect blue_defense and cycle roles', () {
+      final blueMsg = ChatMessage(role: MessageRole.assistant, content: 'code', speakerTag: 'blue');
+      final blueDefenseMsg = ChatMessage(role: MessageRole.assistant, content: 'hardened code', speakerTag: 'blue_defense');
+      final redMsg = ChatMessage(role: MessageRole.assistant, content: 'exploits', speakerTag: 'red');
+      final consensusMsg = ChatMessage(role: MessageRole.assistant, content: 'summary', speakerTag: 'consensus');
+
+      expect(blueMsg.isBlueTeam, isTrue);
+      expect(blueDefenseMsg.isBlueTeam, isTrue);
+      expect(redMsg.isRedTeam, isTrue);
+      expect(consensusMsg.isConsensus, isTrue);
     });
   });
 }

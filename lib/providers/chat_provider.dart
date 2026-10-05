@@ -303,27 +303,27 @@ class ChatProvider extends ChangeNotifier {
     String currentCode = workspaceProvider.currentFileContent;
     String lastBlueResponse = '';
     String lastRedCritique = '';
-    int totalVulns = 0;
-    int totalOpts = 0;
+    final allVulns = <String>[];
+    final allOpts = <String>[];
 
     try {
-      for (int round = 1; round <= cfg.maxRounds; round++) {
+      for (int cycle = 1; cycle <= cfg.maxRounds; cycle++) {
         // -------------------------------------------------------------
-        // 1. BLUE TEAM MESSAGE (BUILDER / ARCHITECT)
+        // 1. BLUE TEAM MESSAGE (BUILDER / ARCHITECT) - Cycle $cycle
         // -------------------------------------------------------------
         final blueMsg = ChatMessage(
           role: MessageRole.assistant,
           speakerTag: 'blue',
           modelName: '${blueProvider.displayName} ($blueModel)',
-          roundNumber: round,
-          content: '🔵 **Blue Team (Builder)** is constructing implementation & architecture (Round $round)...',
+          roundNumber: cycle,
+          content: '🔵 **Blue Team (Builder)** is constructing implementation & architecture (Cycle $cycle)...',
           isProcessing: true,
         );
         session.messages.add(blueMsg);
         notifyListeners();
 
-        final blueSystemPrompt = adversarialService.buildBlueSystemPrompt(round: round, focus: cfg.focus);
-        final blueUserPrompt = round == 1
+        final blueSystemPrompt = adversarialService.buildBlueSystemPrompt(round: cycle, focus: cfg.focus);
+        final blueUserPrompt = cycle == 1
             ? adversarialService.buildBlueInitialPrompt(taskPrompt: prompt, existingCode: currentCode.isNotEmpty ? currentCode : null)
             : adversarialService.buildBlueRefactorPrompt(taskPrompt: prompt, previousCode: currentCode, redCritique: lastRedCritique);
 
@@ -349,14 +349,14 @@ class ChatProvider extends ChangeNotifier {
         notifyListeners();
 
         // -------------------------------------------------------------
-        // 2. RED TEAM MESSAGE (HACKER / SECURITY CRITIC)
+        // 2. RED TEAM MESSAGE (HACKER / SECURITY CRITIC) - Cycle $cycle
         // -------------------------------------------------------------
         final redMsg = ChatMessage(
           role: MessageRole.assistant,
           speakerTag: 'red',
           modelName: '${redProvider.displayName} ($redModel)',
-          roundNumber: round,
-          content: '🔴 **Red Team (Hacker)** is penetrating code for exploits, race conditions, & bottlenecks (Round $round)...',
+          roundNumber: cycle,
+          content: '🔴 **Red Team (Hacker)** is penetrating code for exploits, race conditions, & bottlenecks (Cycle $cycle)...',
           isProcessing: true,
         );
         session.messages.add(redMsg);
@@ -366,7 +366,7 @@ class ChatProvider extends ChangeNotifier {
         final redUserPrompt = adversarialService.buildRedAttackPrompt(
           taskPrompt: prompt,
           codeToAttack: currentCode.isNotEmpty ? currentCode : blueResponse,
-          round: round,
+          round: cycle,
           maxRounds: cfg.maxRounds,
         );
 
@@ -382,12 +382,16 @@ class ChatProvider extends ChangeNotifier {
         lastRedCritique = redResponse;
         final vulns = adversarialService.parseVulnerabilities(redResponse);
         final opts = adversarialService.parseOptimizations(redResponse);
-        totalVulns += vulns.length;
-        totalOpts += opts.length;
+        for (final v in vulns) {
+          if (!allVulns.contains(v)) allVulns.add(v);
+        }
+        for (final o in opts) {
+          if (!allOpts.contains(o)) allOpts.add(o);
+        }
 
         final isConsensus = redResponse.toUpperCase().contains('CONSENSUS_REACHED') ||
             redResponse.toUpperCase().contains('NO VULNERABILITIES FOUND') ||
-            (vulns.isEmpty && opts.isEmpty && round > 1);
+            (vulns.isEmpty && opts.isEmpty);
 
         redMsg.content = redResponse;
         redMsg.vulnerabilities = vulns;
@@ -396,16 +400,66 @@ class ChatProvider extends ChangeNotifier {
         _saveState();
         notifyListeners();
 
-        if (isConsensus || round == cfg.maxRounds) {
+        // -------------------------------------------------------------
+        // 3. BLUE TEAM FIX & HARDENING (Within the SAME cycle!)
+        // -------------------------------------------------------------
+        if (!isConsensus && (vulns.isNotEmpty || opts.isNotEmpty || cycle < cfg.maxRounds)) {
+          final blueFixMsg = ChatMessage(
+            role: MessageRole.assistant,
+            speakerTag: 'blue_defense',
+            modelName: '${blueProvider.displayName} ($blueModel)',
+            roundNumber: cycle,
+            content: '🔵 **Blue Team (Patch & Harden)** is neutralizing ${vulns.length} vulnerabilities & hardening code (Cycle $cycle)...',
+            isProcessing: true,
+          );
+          session.messages.add(blueFixMsg);
+          notifyListeners();
+
+          final fixSystemPrompt = adversarialService.buildBlueSystemPrompt(round: cycle, focus: cfg.focus);
+          final fixUserPrompt = adversarialService.buildBlueRefactorPrompt(
+            taskPrompt: prompt,
+            previousCode: currentCode,
+            redCritique: redResponse,
+          );
+
+          final fixResponse = await adversarialService.generateText(
+            provider: blueProvider,
+            model: blueModel,
+            apiKey: blueKey,
+            systemPrompt: fixSystemPrompt,
+            userPrompt: fixUserPrompt,
+            temperature: cfg.temperature,
+          );
+
+          lastBlueResponse = fixResponse;
+          final fixExtracted = adversarialService.extractCodeBlock(fixResponse);
+          if (fixExtracted != null && fixExtracted.isNotEmpty) {
+            currentCode = fixExtracted;
+          }
+
+          blueFixMsg.content = fixResponse;
+          blueFixMsg.hardenedCode = currentCode.isNotEmpty ? currentCode : null;
+          blueFixMsg.isProcessing = false;
+          _saveState();
+          notifyListeners();
+        }
+
+        if (isConsensus || cycle == cfg.maxRounds) {
+          final summaryReport = adversarialService.buildConsensusSummary(
+            totalCycles: cycle,
+            maxCycles: cfg.maxRounds,
+            vulnerabilities: allVulns,
+            optimizations: allOpts,
+          );
+
           final consensusMsg = ChatMessage(
             role: MessageRole.assistant,
             speakerTag: 'consensus',
-            content: '### 🛡️ Adversarial Hardening Complete!\n\n'
-                '• **Neutralized Vulnerabilities**: $totalVulns\n'
-                '• **Performance Optimizations**: $totalOpts\n'
-                '• **Debate Rounds**: $round of ${cfg.maxRounds}\n'
-                '• **Status**: Verified 100/100 Hardened Consensus.',
+            content: summaryReport,
             hardenedCode: currentCode.isNotEmpty ? currentCode : lastBlueResponse,
+            vulnerabilities: allVulns,
+            optimizations: allOpts,
+            roundNumber: cycle,
           );
           session.messages.add(consensusMsg);
           _saveState();

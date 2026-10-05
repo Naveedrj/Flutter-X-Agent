@@ -617,9 +617,9 @@ class _AdversarialArenaViewState extends State<AdversarialArenaView> {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
                 icon: const Icon(Icons.play_arrow_outlined, size: 16, color: AppTheme.accentCyan),
-                label: const Text('Run xrun flutter test'),
+                label: Text('Run xrun ${workspace.defaultTestCommand}'),
                 onPressed: () {
-                  chat.executeXRunCommand('flutter test');
+                  chat.executeXRunCommand(workspace.defaultTestCommand);
                 },
               ),
               TextButton.icon(

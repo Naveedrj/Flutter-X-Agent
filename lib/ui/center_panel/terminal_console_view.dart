@@ -14,13 +14,18 @@ class _TerminalConsoleViewState extends State<TerminalConsoleView> {
   final TextEditingController _cmdController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  final List<String> _quickCommands = [
-    'ls -la',
-    'pwd',
-    'git status',
-    'flutter pub get',
-    'flutter test',
-  ];
+  List<String> _getQuickCommands(WorkspaceProvider workspace) {
+    final testCmd = workspace.defaultTestCommand;
+    final isFlutter = testCmd.contains('flutter');
+    return [
+      'ls -la',
+      'pwd',
+      'git status',
+      testCmd,
+      if (isFlutter) 'flutter pub get',
+      if (!isFlutter && testCmd.contains('npm')) 'npm install',
+    ];
+  }
 
   @override
   void dispose() {
@@ -74,7 +79,7 @@ class _TerminalConsoleViewState extends State<TerminalConsoleView> {
                 ),
                 const Spacer(),
                 // Quick chips
-                for (final qc in _quickCommands)
+                for (final qc in _getQuickCommands(workspace))
                   Padding(
                     padding: const EdgeInsets.only(left: 6),
                     child: ActionChip(

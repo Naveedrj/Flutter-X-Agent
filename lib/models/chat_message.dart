@@ -47,7 +47,7 @@ class ChatMessage {
         optimizations = optimizations ?? [],
         timestamp = timestamp ?? DateTime.now();
 
-  bool get isBlueTeam => speakerTag == 'blue';
+  bool get isBlueTeam => speakerTag == 'blue' || speakerTag == 'blue_defense';
   bool get isRedTeam => speakerTag == 'red';
   bool get isConsensus => speakerTag == 'consensus';
 

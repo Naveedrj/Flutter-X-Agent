@@ -255,4 +255,125 @@ class WorkspaceService {
     }
     return files;
   }
+
+  /// Detects the project technology/framework (Flutter, Dart, Node.js, Python, Rust, Go, Java, Kotlin, PHP, Ruby, C/C++)
+  String detectProjectType() {
+    if (rootPath == null) return 'Generic';
+    final rootDir = Directory(rootPath!);
+    if (!rootDir.existsSync()) return 'Generic';
+
+    final pubspec = File(p.join(rootPath!, 'pubspec.yaml'));
+    if (pubspec.existsSync()) {
+      try {
+        final content = pubspec.readAsStringSync();
+        if (content.contains('sdk: flutter') || content.contains('flutter:')) {
+          return 'Flutter';
+        }
+      } catch (_) {}
+      return 'Dart';
+    }
+
+    if (File(p.join(rootPath!, 'package.json')).existsSync()) {
+      if (File(p.join(rootPath!, 'tsconfig.json')).existsSync()) return 'TypeScript';
+      return 'Node.js';
+    }
+
+    if (File(p.join(rootPath!, 'Cargo.toml')).existsSync()) return 'Rust';
+    if (File(p.join(rootPath!, 'go.mod')).existsSync()) return 'Go';
+
+    if (File(p.join(rootPath!, 'pyproject.toml')).existsSync() ||
+        File(p.join(rootPath!, 'requirements.txt')).existsSync() ||
+        File(p.join(rootPath!, 'pytest.ini')).existsSync() ||
+        File(p.join(rootPath!, 'Pipfile')).existsSync() ||
+        File(p.join(rootPath!, 'setup.py')).existsSync()) {
+      return 'Python';
+    }
+
+    if (File(p.join(rootPath!, 'pom.xml')).existsSync()) return 'Java (Maven)';
+    if (File(p.join(rootPath!, 'build.gradle.kts')).existsSync() ||
+        File(p.join(rootPath!, 'build.gradle')).existsSync()) {
+      return 'Kotlin / Gradle';
+    }
+
+    if (File(p.join(rootPath!, 'composer.json')).existsSync()) return 'PHP';
+    if (File(p.join(rootPath!, 'Gemfile')).existsSync()) return 'Ruby';
+    if (File(p.join(rootPath!, 'CMakeLists.txt')).existsSync() ||
+        File(p.join(rootPath!, 'Makefile')).existsSync()) {
+      return 'C / C++';
+    }
+
+    return 'Generic';
+  }
+
+  /// Dynamically detects the appropriate test execution command for the workspace technology
+  String detectTestCommand() {
+    if (rootPath == null) return 'flutter test';
+    final rootDir = Directory(rootPath!);
+    if (!rootDir.existsSync()) return 'flutter test';
+
+    // 1. Flutter / Dart
+    final pubspec = File(p.join(rootPath!, 'pubspec.yaml'));
+    if (pubspec.existsSync()) {
+      try {
+        final content = pubspec.readAsStringSync();
+        if (content.contains('sdk: flutter') || content.contains('flutter:')) {
+          return 'flutter test';
+        }
+      } catch (_) {}
+      return 'dart test';
+    }
+
+    // 2. Node.js / TypeScript / React / Next.js
+    final packageJson = File(p.join(rootPath!, 'package.json'));
+    if (packageJson.existsSync()) {
+      if (File(p.join(rootPath!, 'pnpm-lock.yaml')).existsSync()) return 'pnpm test';
+      if (File(p.join(rootPath!, 'yarn.lock')).existsSync()) return 'yarn test';
+      if (File(p.join(rootPath!, 'bun.lockb')).existsSync() || File(p.join(rootPath!, 'bun.lock')).existsSync()) return 'bun test';
+      return 'npm test';
+    }
+
+    // 3. Rust
+    if (File(p.join(rootPath!, 'Cargo.toml')).existsSync()) {
+      return 'cargo test';
+    }
+
+    // 4. Go
+    if (File(p.join(rootPath!, 'go.mod')).existsSync()) {
+      return 'go test ./...';
+    }
+
+    // 5. Python
+    if (File(p.join(rootPath!, 'pytest.ini')).existsSync() ||
+        File(p.join(rootPath!, 'pyproject.toml')).existsSync() ||
+        File(p.join(rootPath!, 'requirements.txt')).existsSync() ||
+        File(p.join(rootPath!, 'setup.py')).existsSync()) {
+      return 'pytest';
+    }
+
+    // 6. Java / Kotlin
+    if (File(p.join(rootPath!, 'pom.xml')).existsSync()) return 'mvn test';
+    if (File(p.join(rootPath!, 'gradlew')).existsSync()) return './gradlew test';
+    if (File(p.join(rootPath!, 'build.gradle.kts')).existsSync() ||
+        File(p.join(rootPath!, 'build.gradle')).existsSync()) {
+      return 'gradle test';
+    }
+
+    // 7. PHP
+    if (File(p.join(rootPath!, 'composer.json')).existsSync()) {
+      if (File(p.join(rootPath!, 'vendor/bin/phpunit')).existsSync()) return './vendor/bin/phpunit';
+      return 'composer test';
+    }
+
+    // 8. Ruby
+    if (File(p.join(rootPath!, 'Gemfile')).existsSync()) {
+      return 'bundle exec rspec';
+    }
+
+    // 9. C / C++
+    if (File(p.join(rootPath!, 'Makefile')).existsSync()) {
+      return 'make test';
+    }
+
+    return 'flutter test';
+  }
 }
