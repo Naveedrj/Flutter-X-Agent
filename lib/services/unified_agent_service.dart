@@ -1262,15 +1262,17 @@ CRITICAL SAFETY & EXECUTION DIRECTIVES:
   Future<Map<String, dynamic>> _executeTool(String name, Map<String, dynamic> args, String turnId) async {
     switch (name) {
       case 'read_file':
-        final path = args['path'] as String;
-        final start = args['start_line'] as int?;
-        final end = args['end_line'] as int?;
+        final path = (args['path'] ?? '').toString();
+        if (path.isEmpty) throw Exception('Missing path argument for read_file');
+        final start = args['start_line'] is int ? args['start_line'] as int : int.tryParse(args['start_line']?.toString() ?? '');
+        final end = args['end_line'] is int ? args['end_line'] as int : int.tryParse(args['end_line']?.toString() ?? '');
         final content = await workspaceService.readFile(path, startLine: start, endLine: end);
         return {'result': content, 'diffStats': null};
 
       case 'write_file':
-        final path = args['path'] as String;
-        final content = args['content'] as String;
+        final path = (args['path'] ?? '').toString();
+        if (path.isEmpty) throw Exception('Missing path argument for write_file');
+        final content = (args['content'] ?? '').toString();
         await snapshotService.captureFileBeforeEdit(turnId, path);
         String oldContent = '';
         try {
@@ -1290,9 +1292,10 @@ CRITICAL SAFETY & EXECUTION DIRECTIVES:
         return {'result': res, 'diffStats': diffStats};
 
       case 'edit_file':
-        final path = args['path'] as String;
-        final target = args['target_content'] as String;
-        final replacement = args['replacement_content'] as String;
+        final path = (args['path'] ?? '').toString();
+        if (path.isEmpty) throw Exception('Missing path argument for edit_file');
+        final target = (args['target_content'] ?? '').toString();
+        final replacement = (args['replacement_content'] ?? '').toString();
         await snapshotService.captureFileBeforeEdit(turnId, path);
         final oldContent = await workspaceService.readFile(path);
         final res = await workspaceService.editFile(path, target, replacement);
@@ -1305,14 +1308,16 @@ CRITICAL SAFETY & EXECUTION DIRECTIVES:
         return {'result': res, 'diffStats': diffStats};
 
       case 'move_file':
-        final src = args['source_path'] as String;
-        final dest = args['destination_path'] as String;
+        final src = (args['source_path'] ?? '').toString();
+        final dest = (args['destination_path'] ?? '').toString();
+        if (src.isEmpty || dest.isEmpty) throw Exception('Missing source_path or destination_path for move_file');
         await snapshotService.captureFileBeforeEdit(turnId, src);
         final res = await workspaceService.moveFile(src, dest);
         return {'result': res, 'diffStats': null};
 
       case 'delete_file':
-        final path = args['path'] as String;
+        final path = (args['path'] ?? '').toString();
+        if (path.isEmpty) throw Exception('Missing path argument for delete_file');
         final normalized = path.trim().replaceAll('\\', '/').toLowerCase();
         if (normalized == 'lib' ||
             normalized == 'android' ||
@@ -1335,12 +1340,13 @@ CRITICAL SAFETY & EXECUTION DIRECTIVES:
         return {'result': res, 'diffStats': '-deleted'};
 
       case 'list_directory':
-        final path = args['path'] as String? ?? '.';
-        final items = await workspaceService.listDirectory(path);
+        final path = (args['path'] ?? '.').toString();
+        final items = await workspaceService.listDirectory(path.isEmpty ? '.' : path);
         return {'result': {'items': items}, 'diffStats': null};
 
       case 'execute_terminal_command':
-        final command = args['command'] as String;
+        final command = (args['command'] ?? '').toString();
+        if (command.isEmpty) throw Exception('Missing command argument for execute_terminal_command');
         final workDir = workspaceService.rootPath ?? '.';
         final res = await terminalService.execute(command, workingDirectory: workDir);
         return {

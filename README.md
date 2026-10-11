@@ -11,6 +11,10 @@
 
 **Flutter-X-Agent** is an enterprise-grade desktop IDE and autonomous agentic coding workspace built natively in Flutter Desktop. It pairs directly with local repositories, indexes projects using hybrid RAG, reads and modifies code with automatic rollback snapshots, executes terminal commands inside a unified chat stream, and pioneers **Dual-Model Adversarial AI Development (Blue Team Builder vs. Red Team Hacker)** for defense-grade, self-hardened software delivery.
 
+<p align="center">
+  <img src="docs/images/adversarial_duel_execution.png" alt="Flutter-X-Agent Autonomous Workspace & Adversarial Arena" width="100%" />
+</p>
+
 ---
 
 ## ⚡ Architectural Comparison
@@ -90,33 +94,54 @@ Traditional single-model coding assistants often suffer from blind spots—produ
 ### 1. ⚔️ Single-Chat Adversarial Duel Switch
 - Toggle **⚔️ Adversarial Mode** on the fly in the top bar without switching tabs.
 - Full duel history, Blue Team proposals, Red Team attack badges, and consensus cards live directly in your unified chat timeline.
+- Enforces strict **1-Cycle Semantics**: Blue Builder generates code → Red Hacker stress-tests vulnerabilities → Blue Team patches & hardens in the same cycle.
 
 ### 2. 🛡️ Self-Healing Auto-Debug Loop
-- Autonomous test runner and error resolver (`xrun flutter test`, `xrun pytest`, `xrun npm test`).
+- Autonomous test runner and error resolver dynamically adapted to your workspace technology:
+  - **Flutter / Dart**: `pubspec.yaml` → `flutter test` / `dart test`
+  - **Node.js / TypeScript / React**: `package.json` → `npm test`, `pnpm test`, `yarn test`, `bun test`
+  - **Python**: `pytest.ini` / `pyproject.toml` / `requirements.txt` → `pytest`
+  - **Rust**: `Cargo.toml` → `cargo test`
+  - **Go**: `go.mod` → `go test ./...`
+  - **Java / Kotlin / Gradle**: `pom.xml` / `build.gradle` → `mvn test` / `./gradlew test`
 - Parses compiler outputs, missing imports, assertion failures, and stack traces.
 - Automatically edits the broken files, re-runs the test suite, and iterates in a loop until all tests pass with **0 errors**.
 
 ### 3. 🔍 Visual Side-by-Side Git Diff Viewer
 - Full color-coded before/after file diffs (green for additions, red for deletions).
-- Granular inspection of agent modifications with instant file revert and diff inspection.
+- **Multi-File Mutation Dropdown**: Quickly inspect all modified files across multi-file agent refactors with live line diff stats (e.g. `+476 -0`, `+404 -0`, `+103 -0`) and single-click **"Revert File"** snapshot rollback.
 
-### 4. ⏪ One-Click Workspace Snapshots & Undo (Rollback History)
+<p align="center">
+  <img src="docs/images/visual_diff_inspector.png" alt="Visual Diff Inspector with Multi-File Dropdown" width="100%" />
+</p>
+
+### 4. 📝 Integrated Code Editor & Tool Call Transparency
+- Built-in lightweight code editor with syntax highlighting, line numbers, and font sizing controls (`13pt`, `+`, `-`).
+- **Live Tool Execution Cards**: Every autonomous tool action (`write_file`, `edit_file`, `read_file`, `execute_terminal_command`) displays real-time execution pills with line counters (`+404`, `+103`, `+77`) and green success indicators.
+- **Error Transparency & Diagnostics**: Expandable cards reveal tool arguments, JSON payloads, and error outputs with one-click **"Copy Output"** capability.
+- **Emergency Stop Control**: Immediate abort button to halt running agent turns or background adversarial loops safely without leaving dangling state.
+
+<p align="center">
+  <img src="docs/images/code_editor_workspace.png" alt="Native Code Editor & Tool Execution Transparency" width="100%" />
+</p>
+
+### 5. ⏪ One-Click Workspace Snapshots & Undo (Rollback History)
 - Automatic workspace snapshots captured before every code mutation.
 - Single-click **"Rollback Turn"** to restore your workspace to its exact prior state.
 
-### 5. 🔀 AI-Powered Git Commit & Push
+### 6. 🔀 AI-Powered Git Commit & Push
 - Inspects staged and unstaged `git diff` and `git status`.
 - Automatically generates standardized **Conventional Commit messages** (`feat:`, `fix:`, `refactor:`, `docs:`) and pushes to your remote repository with one click.
 
-### 6. ⚡ In-Chat Terminal Hub (`xrun <cmd>`)
-- Run shell commands directly inside the chat window by prefixing with `xrun` (e.g., `xrun flutter pub get`, `xrun git status`).
+### 7. ⚡ In-Chat Terminal Hub (`xrun <cmd>`)
+- Run shell commands directly inside the chat window by prefixing with `xrun` (e.g., `xrun flutter pub get`, `xrun npm test`, `xrun git status`).
 - Displays live stdout/stderr cards, exit status badges, and millisecond execution metrics inline.
 
-### 7. 🧠 Hybrid RAG Knowledge Engine
+### 8. 🧠 Hybrid RAG Knowledge Engine
 - Automatically parses and chunks your entire codebase upon opening a folder.
 - Combines semantic vector indexing with keyword ranking to inject hyper-relevant context into agent prompts.
 
-### 8. 🌐 Live Web Artifact & HTML/JS Preview
+### 9. 🌐 Live Web Artifact & HTML/JS Preview
 - Instantly renders generated HTML, CSS, JavaScript, SVG, and web apps inside an interactive webview sandbox.
 
 ---
