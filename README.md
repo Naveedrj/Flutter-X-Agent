@@ -162,6 +162,54 @@ Bring your own API keys or run completely free & offline models:
 
 ---
 
+## 🤖 Model Capabilities, Execution Fidelity & Behavioral Matrix
+
+A key question when using agentic IDEs is: **"Does Flutter-X-Agent work the same way across all models, or does the behavior vary?"**
+
+### 1. What Stays Unified Across All Models (Engine Level)
+Regardless of the model or provider you select, Flutter-X-Agent guarantees the exact same core infrastructure:
+- **Identical Tool Schema**: All models receive the same tools (`write_file`, `edit_file`, `read_file`, `execute_terminal_command`, `list_directory`).
+- **Resilient Fallback Parser**: If a smaller model writes a markdown tutorial or code blocks instead of formal JSON tool calls, the engine automatically extracts the file paths and code snippets to create and apply them to disk seamlessly.
+- **Safety Snapshots & Rollback**: Every file modification is snapshotted before execution.
+- **Dynamic Technology Test Detection**: Test runner detection (`flutter test`, `npm test`, `pytest`, `cargo test`, `go test`) applies universally.
+
+---
+
+### 2. How Real-World Behavior Varies by Model Tier
+
+| Model Tier & Examples | Tool Calling Fidelity | Multi-File Orchestration | Code Completeness | Execution Style & Characteristics |
+| :--- | :---: | :---: | :---: | :--- |
+| **🏆 Frontier Cloud Models**<br>*(Claude 3.5 Sonnet / Haiku, Gemini 1.5 Pro / 2.0 Flash)* | **⭐⭐⭐⭐⭐<br>Native & Precise** | **5–10 files in a single prompt** | **100% complete, zero placeholders** | Best for full-app generation and complex refactoring. Follows deep multi-step instructions, enforces robust state management, and rarely makes syntax errors. |
+| **⚡ Fast Cloud Open-Weight**<br>*(Groq: Qwen-2.5-Coder-32B, Llama-3.3-70B, DeepSeek-R1)* | **⭐⭐⭐⭐<br>Very Strong** | **2–5 files at a time** | **Production-grade implementations** | Blazing speed (~450 tok/s). Incredible as a **Red Team Hacker** to detect security vulnerabilities, race conditions, and edge cases. DeepSeek-R1 performs deep reasoning before execution. |
+| **💻 Local Offline Models**<br>*(Ollama: Qwen2.5-Coder 7B/14B, DeepSeek-R1 7B, Llama 3.1 8B)* | **⭐⭐⭐<br>Basic to Moderate** | **1–2 files at a time** | **May include comments / placeholders** | Runs 100% private and air-gapped without API keys. Due to 7B parameter constraints, works best on targeted single-file tasks rather than massive multi-file projects. |
+
+---
+
+### 3. Key Behavioral Differences in Practice
+
+1. **Multi-File Generation**:
+   - **Frontier Models (Claude / Gemini)**: Can effortlessly build an entire feature architecture across 8–10 files in a single turn (data models, state management, UI screens, repository, and unit tests).
+   - **Local 7B Models (Ollama)**: Can get context-constrained on massive requests. They perform best when prompted step-by-step (e.g. *"Create the lockout policy and its tests first"*).
+2. **Native JSON Calling vs. Tutorial Markdown**:
+   - **Claude / Gemini / Groq**: Exclusively emit native function-calling JSON.
+   - **Local Models**: Frequently write instructional markdown. Flutter-X-Agent's built-in fallback parser catches this and executes the code automatically.
+3. **Reasoning in Adversarial Mode**:
+   - **Claude / Gemini**: Excels as a **Blue Team Builder** (clean architectural patterns, dependency injection, type safety).
+   - **DeepSeek-R1 / Qwen 2.5 Coder / Llama 3.3**: Excels as a ruthless **Red Team Hacker** (hunting down memory leaks, unhandled async gaps, missing `dispose()` calls, and plaintext secrets in RAM).
+
+---
+
+### 💡 Recommended Model Pairings
+
+| Use Case | 🔵 Blue Team (Builder) | 🔴 Red Team (Hacker) | Estimated Cost |
+| :--- | :--- | :--- | :--- |
+| **Enterprise / Defense-Grade** | **Claude 3.5 Sonnet** or **Gemini 1.5 Pro** | **Claude 3.5 Haiku** or **Groq Llama-3.3-70B** | BYOK (Paid API) |
+| **High Speed & Free Cloud** | **Groq Qwen-2.5-Coder-32B** | **Groq Llama-3.3-70B** | **100% Free** |
+| **Deep Reasoning & Bug Hunting**| **Gemini 2.0 Flash** | **DeepSeek-R1 (Groq / OpenRouter)** | **Free / BYOK** |
+| **100% Offline & Air-Gapped** | **Local Ollama Qwen2.5-Coder:14b / 7b** | **Local Ollama DeepSeek-R1:7b** | **100% Free & Offline** |
+
+---
+
 ## 🛠️ Tri-Panel Workspace Architecture
 
 ```
